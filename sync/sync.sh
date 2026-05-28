@@ -1,21 +1,21 @@
 #!/usr/bin/env bash
 # Main sync loop. Pulls photos from rclone remotes, processes them, updates manifest.
 # Designed to run forever inside Termux, started by boot.sh.
-# Testable on macOS — just set up frame.env and configure rclone.
+# Testable on macOS — just set up .env and configure rclone.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Source frame.env: check next to the script, then home dir, then env var
-for candidate in "$SCRIPT_DIR/../frame.env" "$HOME/frame.env" "${FRAME_ENV:-}"; do
+# Source .env: check next to the script, then home dir, then env var
+for candidate in "$SCRIPT_DIR/../.env" "$HOME/.env" "${FRAME_ENV:-}"; do
     if [[ -n "$candidate" && -f "$candidate" ]]; then
         source "$candidate"
         break
     fi
 done
 
-# --- Config (env vars from frame.env, with defaults) ---
+# --- Config (env vars from .env, with defaults) ---
 FRAME_DATA_DIR="${FRAME_DATA_DIR:-$HOME/frame-data}"
 RCLONE_CONF="${RCLONE_CONF:-$HOME/.config/rclone/rclone.conf}"
 SYNC_INTERVAL="${SYNC_INTERVAL:-1800}"

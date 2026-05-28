@@ -1,7 +1,7 @@
 apks/
 test-photos/
 sync/rclone.conf
-frame.env
+.env
 *.log
 .DS_Store
 slideshow/photos/

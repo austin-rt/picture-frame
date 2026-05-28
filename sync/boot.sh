@@ -6,8 +6,8 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Source frame.env
-for candidate in "$SCRIPT_DIR/../frame.env" "$HOME/frame.env" "${FRAME_ENV:-}"; do
+# Source .env
+for candidate in "$SCRIPT_DIR/../.env" "$HOME/.env" "${FRAME_ENV:-}"; do
     if [[ -n "$candidate" && -f "$candidate" ]]; then
         source "$candidate"
         break
