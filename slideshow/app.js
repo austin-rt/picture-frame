@@ -1,11 +1,15 @@
 (function () {
     "use strict";
 
-    var INTERVAL = 30000;
-    var MANIFEST_POLL = 60000;
+    var DEFAULTS = {
+        interval: 30,       // seconds
+        fadeDuration: 1500,  // ms
+        manifestPoll: 60000  // ms
+    };
+
     var MANIFEST_URL = "manifest.json";
+    var CONFIG_URL = "config.json";
     var PHOTO_BASE = "photos/";
-    var FADE_MS = 1500;
 
     var imgA = document.getElementById("img-a");
     var imgB = document.getElementById("img-b");
@@ -13,16 +17,16 @@
 
     var photos = [];
     var queue = [];
-    var front = imgA;  // currently visible, on top
-    var back = imgB;   // behind, used for loading next image
+    var front = imgA;
+    var back = imgB;
     var transitioning = false;
+    var intervalMs = DEFAULTS.interval * 1000;
+    var fadeMs = DEFAULTS.fadeDuration;
+    var slideTimer = null;
 
+    // Query params override config.json
     var params = new URLSearchParams(window.location.search);
-    if (params.has("interval")) {
-        INTERVAL = parseInt(params.get("interval"), 10) * 1000 || INTERVAL;
-    }
 
-    // Init layering
     front.style.zIndex = 2;
     front.style.opacity = 1;
     back.style.zIndex = 1;
@@ -54,28 +58,23 @@
 
         back.onload = function () {
             transitioning = true;
-
-            // back is behind front, fully opaque but hidden — load is done
-            // Now set back to opaque with no transition (it's invisible behind front)
             back.style.transition = "none";
             back.style.opacity = 1;
             back.style.zIndex = 1;
             front.style.zIndex = 2;
-            back.offsetHeight; // force reflow
+            back.offsetHeight;
 
-            // Fade front out — reveals back behind it
-            front.style.transition = "opacity " + FADE_MS + "ms ease-in-out";
+            front.style.transition = "opacity " + fadeMs + "ms ease-in-out";
             front.style.opacity = 0;
 
             setTimeout(function () {
-                // Swap: back becomes the new front
                 var tmp = front;
                 front = back;
                 back = tmp;
                 front.style.zIndex = 2;
                 back.style.zIndex = 1;
                 transitioning = false;
-            }, FADE_MS + 100);
+            }, fadeMs + 100);
         };
         back.onerror = function () {
             setTimeout(advance, 100);
@@ -106,9 +105,33 @@
         clockEl.textContent = h + ":" + (m < 10 ? "0" : "") + m + " " + ampm;
     }
 
+    function applyConfig(cfg) {
+        // Query params take precedence over config.json
+        var newInterval = params.has("interval")
+            ? parseInt(params.get("interval"), 10)
+            : (cfg.interval || DEFAULTS.interval);
+        intervalMs = newInterval * 1000;
+
+        fadeMs = params.has("fade")
+            ? parseInt(params.get("fade"), 10)
+            : (cfg.fadeDuration || DEFAULTS.fadeDuration);
+
+        // Restart the slide timer with the new interval
+        if (slideTimer) clearInterval(slideTimer);
+        slideTimer = setInterval(advance, intervalMs);
+    }
+
+    function loadConfig() {
+        fetch(CONFIG_URL + "?t=" + Date.now())
+            .then(function (r) { return r.json(); })
+            .then(function (cfg) { applyConfig(cfg); })
+            .catch(function () { applyConfig({}); });
+    }
+
+    // --- Init ---
+    loadConfig();
     loadManifest();
-    setInterval(advance, INTERVAL);
-    setInterval(loadManifest, MANIFEST_POLL);
+    setInterval(loadManifest, DEFAULTS.manifestPoll);
     updateClock();
     setInterval(updateClock, 10000);
 })();

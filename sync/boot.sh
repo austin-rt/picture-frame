@@ -1,17 +1,28 @@
 #!/usr/bin/env bash
 # Termux:Boot entry point. Place this (or symlink it) at ~/.termux/boot/boot.sh
-# Starts: sshd, sync loop. All auto-restart on device reboot.
+# Starts: sshd, HTTP server, sync loop. All auto-restart on device reboot.
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Source frame.env
+for candidate in "$SCRIPT_DIR/../frame.env" "$HOME/frame.env" "${FRAME_ENV:-}"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+        source "$candidate"
+        break
+    fi
+done
+
 FRAME_DATA_DIR="${FRAME_DATA_DIR:-$HOME/frame-data}"
+HTTP_PORT="${HTTP_PORT:-8080}"
+FRAME_NAME="${FRAME_NAME:-frame}"
 LOG="$FRAME_DATA_DIR/boot.log"
 
 mkdir -p "$FRAME_DATA_DIR"
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" >> "$LOG"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$FRAME_NAME] $*" >> "$LOG"
 }
 
 log "=== Boot script starting ==="
@@ -31,8 +42,8 @@ fi
 SLIDESHOW_DIR="$FRAME_DATA_DIR/slideshow"
 if [[ -d "$SLIDESHOW_DIR" ]]; then
     cd "$SLIDESHOW_DIR"
-    nohup busybox httpd -f -p 8080 >> "$FRAME_DATA_DIR/httpd.log" 2>&1 &
-    log "HTTP server started on :8080 (PID $!)"
+    nohup busybox httpd -f -p "$HTTP_PORT" >> "$FRAME_DATA_DIR/httpd.log" 2>&1 &
+    log "HTTP server started on :$HTTP_PORT (PID $!)"
     cd - >/dev/null
 else
     log "Slideshow dir not found at $SLIDESHOW_DIR — sync will create it"

@@ -1,27 +1,40 @@
 #!/usr/bin/env bash
 # Main sync loop. Pulls photos from rclone remotes, processes them, updates manifest.
 # Designed to run forever inside Termux, started by boot.sh.
-# Testable on macOS — just set FRAME_DATA_DIR and configure rclone.
+# Testable on macOS — just set up frame.env and configure rclone.
 
 set -uo pipefail
 
-# --- Config ---
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# Source frame.env: check next to the script, then home dir, then env var
+for candidate in "$SCRIPT_DIR/../frame.env" "$HOME/frame.env" "${FRAME_ENV:-}"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then
+        source "$candidate"
+        break
+    fi
+done
+
+# --- Config (env vars from frame.env, with defaults) ---
 FRAME_DATA_DIR="${FRAME_DATA_DIR:-$HOME/frame-data}"
 RCLONE_CONF="${RCLONE_CONF:-$HOME/.config/rclone/rclone.conf}"
-SYNC_INTERVAL="${SYNC_INTERVAL:-1800}"       # 30 minutes default
-MAX_BACKOFF="${MAX_BACKOFF:-7200}"            # 2 hours max backoff
-RCLONE_REMOTES="${RCLONE_REMOTES:-drive:PhotoFrame}" # space-separated list of remotes
+SYNC_INTERVAL="${SYNC_INTERVAL:-1800}"
+MAX_BACKOFF="${MAX_BACKOFF:-7200}"
+RCLONE_REMOTES="${RCLONE_REMOTES:-drive:PhotoFrame}"
+SLIDESHOW_INTERVAL="${SLIDESHOW_INTERVAL:-30}"
+FADE_DURATION="${FADE_DURATION:-1500}"
+FRAME_NAME="${FRAME_NAME:-frame}"
 
 RAW_DIR="$FRAME_DATA_DIR/raw"
 PHOTOS_DIR="$FRAME_DATA_DIR/photos"
 SLIDESHOW_DIR="$FRAME_DATA_DIR/slideshow"
 MANIFEST="$SLIDESHOW_DIR/manifest.json"
-SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+CONFIG_JSON="$SLIDESHOW_DIR/config.json"
 
 LOG_FILE="${LOG_FILE:-$FRAME_DATA_DIR/sync.log}"
 
 log() {
-    echo "[$(date '+%Y-%m-%d %H:%M:%S')] $*" | tee -a "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] [$FRAME_NAME] $*" | tee -a "$LOG_FILE"
 }
 
 # --- Setup directories ---
@@ -35,6 +48,15 @@ if [[ ! -f "$SLIDESHOW_DIR/index.html" && -d "$SCRIPT_DIR/../slideshow" ]]; then
     cp "$SCRIPT_DIR/../slideshow/"* "$SLIDESHOW_DIR/" 2>/dev/null || true
     log "Copied slideshow files to $SLIDESHOW_DIR"
 fi
+
+# Write config.json for the slideshow front-end
+cat > "$CONFIG_JSON" <<EJSON
+{
+  "interval": ${SLIDESHOW_INTERVAL},
+  "fadeDuration": ${FADE_DURATION},
+  "frameName": "${FRAME_NAME}"
+}
+EJSON
 
 current_backoff="$SYNC_INTERVAL"
 
@@ -58,7 +80,6 @@ sync_once() {
     for f in "$RAW_DIR"/*; do
         [[ -f "$f" ]] || continue
         base=$(basename "$f")
-        ext="${base##*.}"
         name="${base%.*}"
         out="$PHOTOS_DIR/${name}.jpg"
 
@@ -73,7 +94,6 @@ sync_once() {
     for f in "$PHOTOS_DIR"/*.jpg; do
         [[ -f "$f" ]] || continue
         base=$(basename "$f" .jpg)
-        # Check if any file with this base name exists in raw/
         if ! ls "$RAW_DIR"/"$base".* >/dev/null 2>&1; then
             log "Removing deleted photo: $(basename "$f")"
             rm "$f"
@@ -100,7 +120,6 @@ while true; do
     if sync_once; then
         current_backoff="$SYNC_INTERVAL"
     else
-        # Exponential backoff on failure, capped at MAX_BACKOFF
         current_backoff=$((current_backoff * 2))
         if (( current_backoff > MAX_BACKOFF )); then
             current_backoff="$MAX_BACKOFF"

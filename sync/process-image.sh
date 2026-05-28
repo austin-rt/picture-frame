@@ -1,22 +1,22 @@
 #!/usr/bin/env bash
-# Process a single image: convert to JPEG, downscale to fit 1280x800, strip metadata.
+# Process a single image: convert to JPEG, downscale to frame resolution, strip metadata.
 # Usage: process-image.sh <input> <output>
-# Skips if output already exists and is newer than input.
+# Reads FRAME_WIDTH, FRAME_HEIGHT, IMAGE_QUALITY from environment (set by frame.env).
 
 set -euo pipefail
 
 INPUT="$1"
 OUTPUT="$2"
+MAX_W="${FRAME_WIDTH:-1280}"
+MAX_H="${FRAME_HEIGHT:-800}"
+QUALITY="${IMAGE_QUALITY:-4}"
 
 if [[ -f "$OUTPUT" && "$OUTPUT" -nt "$INPUT" ]]; then
     exit 0
 fi
 
-# Downscale to fit within 1280x800, convert to JPEG, strip EXIF, quality 85.
-# -vf scale: uses -2 to maintain aspect ratio and ensure even dimensions.
-# Input can be HEIC, PNG, JPEG, WEBP — ffmpeg handles all of them.
 ffmpeg -y -i "$INPUT" \
-    -vf "scale='min(1280,iw)':'min(800,ih)':force_original_aspect_ratio=decrease" \
-    -q:v 4 \
+    -vf "scale='min(${MAX_W},iw)':'min(${MAX_H},ih)':force_original_aspect_ratio=decrease" \
+    -q:v "$QUALITY" \
     -map_metadata -1 \
     "$OUTPUT" 2>/dev/null
