@@ -1,0 +1,7 @@
+apks/
+test-photos/
+sync/rclone.conf
+*.log
+.DS_Store
+slideshow/photos/
+slideshow/manifest.json
