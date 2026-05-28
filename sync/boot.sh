@@ -6,13 +6,11 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
-# Source .env
-for candidate in "$SCRIPT_DIR/../.env" "$HOME/.env" "${FRAME_ENV:-}"; do
-    if [[ -n "$candidate" && -f "$candidate" ]]; then
-        source "$candidate"
-        break
-    fi
-done
+# Source frame config
+FRAME_CONF="${FRAME_CONF:-$HOME/frame.conf}"
+if [[ -f "$FRAME_CONF" ]]; then
+    source "$FRAME_CONF"
+fi
 
 FRAME_DATA_DIR="${FRAME_DATA_DIR:-$HOME/frame-data}"
 HTTP_PORT="${HTTP_PORT:-8080}"
