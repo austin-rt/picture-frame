@@ -46,8 +46,8 @@ else
     log "No NTP client available — clock may drift after power loss"
 fi
 
-# Acquire wake lock to prevent Android from sleeping Termux
-termux-wake-lock 2>/dev/null || true
+# Whitelist Termux from battery optimization (no battery on this device)
+dumpsys deviceidle whitelist +com.termux >/dev/null 2>&1 || true
 
 # Start sshd (for remote access over Tailscale)
 if command -v sshd >/dev/null 2>&1; then
@@ -78,9 +78,14 @@ TAILSCALED="$PREFIX/bin/tailscaled"
 TAILSCALE="$PREFIX/bin/tailscale"
 if [[ -x "$TAILSCALED" ]]; then
     mkdir -p "$TSDIR"
+    rm -f "$TSDIR/tailscaled.sock"
     nohup "$TAILSCALED" --tun=userspace-networking --statedir="$TSDIR" --socket="$TSDIR/tailscaled.sock" >> "$FRAME_DATA_DIR/tailscale.log" 2>&1 &
     log "tailscaled started (PID $!)"
-    sleep 3
+    # Wait for socket to be ready (Go binary needs time to initialize)
+    for i in 1 2 3 4 5 6 7 8 9 10; do
+        [[ -S "$TSDIR/tailscaled.sock" ]] && break
+        sleep 1
+    done
     "$TAILSCALE" --socket="$TSDIR/tailscaled.sock" serve --bg --tcp 22 tcp://localhost:8022 >> "$LOG" 2>&1 || true
     log "Tailscale SSH proxy configured"
 else
