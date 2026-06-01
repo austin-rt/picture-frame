@@ -6,8 +6,10 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
+import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.WebChromeClient;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebSettings;
@@ -17,36 +19,69 @@ public class KioskActivity extends Activity {
 
     private WebView webView;
     private boolean termuxStarted = false;
+    private boolean pageLoaded = false;
+
+    private float touchStartX, touchStartY;
+    private long touchStartTime;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
 
-        // Keep screen on
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
-
-        // Hide system UI
         hideSystemUI();
 
-        // Create WebView programmatically (no XML layout needed)
         webView = new WebView(this);
         setContentView(webView);
 
-        // Configure WebView
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
+        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
         settings.setMediaPlaybackRequiresUserGesture(false);
+        settings.setSupportZoom(false);
+        settings.setBuiltInZoomControls(false);
 
-        // Stay in the WebView for all navigation
-        webView.setWebViewClient(new WebViewClient());
+        webView.setOverScrollMode(View.OVER_SCROLL_NEVER);
+        webView.setVerticalScrollBarEnabled(false);
+        webView.setHorizontalScrollBarEnabled(false);
 
-        // Load slideshow
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onPageFinished(WebView view, String url) {
+                super.onPageFinished(view, url);
+                pageLoaded = true;
+            }
+        });
+
+        webView.setWebChromeClient(new WebChromeClient());
+        webView.clearCache(true);
         webView.loadUrl("http://localhost:8080");
-
-        // Start Termux in background after a short delay
         startTermuxDelayed();
+    }
+
+    @Override
+    public boolean dispatchTouchEvent(MotionEvent event) {
+        switch (event.getAction()) {
+            case MotionEvent.ACTION_DOWN:
+                touchStartX = event.getRawX();
+                touchStartY = event.getRawY();
+                touchStartTime = System.currentTimeMillis();
+                break;
+            case MotionEvent.ACTION_UP:
+                float dx = event.getRawX() - touchStartX;
+                float dy = event.getRawY() - touchStartY;
+                long dt = System.currentTimeMillis() - touchStartTime;
+                if (dt < 1000 && Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy)) {
+                    if (pageLoaded) {
+                        String fn = (dx < 0) ? "swipeLeft" : "swipeRight";
+                        webView.evaluateJavascript(
+                            "window." + fn + " && window." + fn + "()", null);
+                    }
+                }
+                break;
+        }
+        return true;
     }
 
     private void startTermuxDelayed() {
@@ -57,7 +92,6 @@ public class KioskActivity extends Activity {
             @Override
             public void run() {
                 if (!isTermuxRunning()) {
-                    // Launch Termux activity (it will run boot.sh via Termux:Boot)
                     Intent termux = new Intent();
                     termux.setClassName("com.termux", "com.termux.app.TermuxActivity");
                     termux.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -65,7 +99,6 @@ public class KioskActivity extends Activity {
                         startActivity(termux);
                     } catch (Exception ignored) {}
 
-                    // Bring ourselves back to front after Termux starts
                     new Handler().postDelayed(new Runnable() {
                         @Override
                         public void run() {
@@ -74,7 +107,7 @@ public class KioskActivity extends Activity {
                     }, 3000);
                 }
             }
-        }, 5000); // Wait 5s after boot for system to settle
+        }, 5000);
     }
 
     private void moveTaskToFront() {
@@ -121,6 +154,5 @@ public class KioskActivity extends Activity {
 
     @Override
     public void onBackPressed() {
-        // Disable back button in kiosk mode
     }
 }

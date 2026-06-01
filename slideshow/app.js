@@ -2,9 +2,9 @@
     "use strict";
 
     var DEFAULTS = {
-        interval: 30,       // seconds
-        fadeDuration: 1500,  // ms
-        manifestPoll: 60000  // ms
+        interval: 30,
+        fadeDuration: 1500,
+        manifestPoll: 60000
     };
 
     var MANIFEST_URL = "manifest.json";
@@ -24,7 +24,6 @@
     var fadeMs = DEFAULTS.fadeDuration;
     var slideTimer = null;
 
-    // Query params override config.json (manual parse for WebView < 49)
     var params = {};
     (function () {
         var qs = window.location.search.substring(1);
@@ -60,35 +59,80 @@
         return queue.pop();
     }
 
+    function crossfade(url, duration, done) {
+        var ms = duration || fadeMs;
+        back.style.transition = "none";
+        back.style.opacity = 1;
+        back.style.zIndex = 1;
+        front.style.zIndex = 2;
+        back.style.backgroundImage = "url(" + url + ")";
+        back.offsetHeight;
+
+        front.style.transition = "opacity " + ms + "ms ease-in-out";
+        front.style.opacity = 0;
+
+        setTimeout(function () {
+            var tmp = front;
+            front = back;
+            back = tmp;
+            front.style.zIndex = 2;
+            back.style.zIndex = 1;
+            transitioning = false;
+            if (done) done();
+        }, ms + 100);
+    }
+
+    // --- History (circular) ---
+    var history = [];
+    var histIdx = -1;
+
     function advance() {
         if (transitioning) return;
         var photo = nextPhoto();
         if (!photo) return;
+        history.unshift(photo);
+        if (history.length > 50) history.pop();
+        histIdx = -1;
+        transitioning = true;
+        crossfade(PHOTO_BASE + photo.filename, fadeMs);
+    }
 
-        back.onload = function () {
-            transitioning = true;
-            back.style.transition = "none";
-            back.style.opacity = 1;
-            back.style.zIndex = 1;
-            front.style.zIndex = 2;
-            back.offsetHeight;
+    function showPhoto(photo, done) {
+        if (!photo) return;
+        transitioning = true;
+        crossfade(PHOTO_BASE + photo.filename, 250, done);
+    }
 
-            front.style.transition = "opacity " + fadeMs + "ms ease-in-out";
-            front.style.opacity = 0;
+    function goForward() {
+        if (transitioning) return;
+        if (histIdx > 0) {
+            histIdx--;
+            showPhoto(history[histIdx], resetTimer);
+        } else if (histIdx === 0 && history.length > 1) {
+            histIdx = history.length - 1;
+            showPhoto(history[histIdx], resetTimer);
+        } else {
+            histIdx = -1;
+            advance();
+            resetTimer();
+        }
+    }
 
-            setTimeout(function () {
-                var tmp = front;
-                front = back;
-                back = tmp;
-                front.style.zIndex = 2;
-                back.style.zIndex = 1;
-                transitioning = false;
-            }, fadeMs + 100);
-        };
-        back.onerror = function () {
-            setTimeout(advance, 100);
-        };
-        back.src = PHOTO_BASE + photo.filename;
+    function goBack() {
+        if (transitioning) return;
+        var target = (histIdx < 0) ? 1 : histIdx + 1;
+        if (target < history.length) {
+            histIdx = target;
+            showPhoto(history[histIdx], resetTimer);
+        } else if (history.length > 1) {
+            histIdx = 0;
+            showPhoto(history[histIdx], resetTimer);
+        }
+    }
+
+    function resetTimer() {
+        if (slideTimer) clearInterval(slideTimer);
+        slideTimer = setInterval(advance, intervalMs);
     }
 
     function loadManifest() {
@@ -97,7 +141,7 @@
             .then(function (data) {
                 if (Array.isArray(data) && data.length > 0) {
                     photos = data;
-                    if (!front.src || front.src === window.location.href) {
+                    if (!front.style.backgroundImage) {
                         advance();
                     }
                 }
@@ -115,7 +159,6 @@
     }
 
     function applyConfig(cfg) {
-        // Query params take precedence over config.json
         var newInterval = ("interval" in params)
             ? parseInt(params["interval"], 10)
             : (cfg.interval || DEFAULTS.interval);
@@ -125,7 +168,6 @@
             ? parseInt(params["fade"], 10)
             : (cfg.fadeDuration || DEFAULTS.fadeDuration);
 
-        // Restart the slide timer with the new interval
         if (slideTimer) clearInterval(slideTimer);
         slideTimer = setInterval(advance, intervalMs);
     }
@@ -136,6 +178,10 @@
             .then(function (cfg) { applyConfig(cfg); })
             .catch(function () { applyConfig({}); });
     }
+
+    // Expose for native Java swipe injection
+    window.swipeLeft = function () { goForward(); };
+    window.swipeRight = function () { goBack(); };
 
     // --- Init ---
     loadConfig();
