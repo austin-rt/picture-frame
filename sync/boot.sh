@@ -35,19 +35,41 @@ log() {
 
 log "=== Boot script starting ==="
 
-# Sync system clock via NTP (no battery-backed RTC on this device)
-if command -v ntpd >/dev/null 2>&1; then
-    ntpd -d -n -q -p pool.ntp.org >> "$LOG" 2>&1 || true
-    log "NTP time sync attempted"
-elif command -v busybox >/dev/null 2>&1 && busybox ntpd --help >/dev/null 2>&1; then
-    busybox ntpd -d -n -q -p pool.ntp.org >> "$LOG" 2>&1 || true
-    log "NTP time sync attempted (busybox)"
+# Sync system clock (no battery-backed RTC on this device)
+sync_clock() {
+    if command -v ntpd >/dev/null 2>&1; then
+        ntpd -d -n -q -p pool.ntp.org >> "$LOG" 2>&1 && return 0
+    fi
+    if command -v busybox >/dev/null 2>&1 && busybox ntpd --help >/dev/null 2>&1; then
+        busybox ntpd -d -n -q -p pool.ntp.org >> "$LOG" 2>&1 && return 0
+    fi
+    # Fallback: set clock from HTTP Date header (needs su for system clock)
+    if command -v curl >/dev/null 2>&1; then
+        local http_date
+        http_date=$(curl -sI --max-time 10 http://worldtimeapi.org/api/ip 2>/dev/null \
+            | grep -i '^date:' | sed 's/^[Dd]ate: //' | tr -d '\r')
+        if [[ -n "$http_date" ]]; then
+            su -c "date -s '$http_date'" >> "$LOG" 2>&1 && return 0
+            # If su fails, try without it (won't change system clock but logs the attempt)
+            log "HTTP date available ($http_date) but cannot set system clock without root"
+            return 1
+        fi
+    fi
+    return 1
+}
+
+if sync_clock; then
+    log "Clock synced"
 else
-    log "No NTP client available — clock may drift after power loss"
+    log "Clock sync failed — time may be wrong after power loss"
 fi
 
 # Whitelist Termux from battery optimization (no battery on this device)
 dumpsys deviceidle whitelist +com.termux >/dev/null 2>&1 || true
+
+# Kill stale services from any previous boot.sh run
+pkill -f "busybox httpd" 2>/dev/null || true
+pkill -f "sshd" 2>/dev/null || true
 
 # Start sshd (for remote access over Tailscale)
 if command -v sshd >/dev/null 2>&1; then
@@ -62,8 +84,20 @@ SLIDESHOW_DIR="$FRAME_DATA_DIR/slideshow"
 if [[ -d "$SLIDESHOW_DIR" ]]; then
     cd "$SLIDESHOW_DIR"
     nohup busybox httpd -f -p "$HTTP_PORT" >> "$FRAME_DATA_DIR/httpd.log" 2>&1 &
-    log "HTTP server started on :$HTTP_PORT (PID $!)"
+    HTTPD_PID=$!
+    log "HTTP server started on :$HTTP_PORT (PID $HTTPD_PID)"
     cd - >/dev/null
+    # Verify httpd is actually running
+    sleep 1
+    if kill -0 "$HTTPD_PID" 2>/dev/null; then
+        log "HTTP server verified running"
+    else
+        log "WARNING: HTTP server died immediately — retrying"
+        cd "$SLIDESHOW_DIR"
+        nohup busybox httpd -f -p "$HTTP_PORT" >> "$FRAME_DATA_DIR/httpd.log" 2>&1 &
+        log "HTTP server retry (PID $!)"
+        cd - >/dev/null
+    fi
 else
     log "Slideshow dir not found at $SLIDESHOW_DIR — sync will create it"
 fi
@@ -78,16 +112,32 @@ TAILSCALED="$PREFIX/bin/tailscaled"
 TAILSCALE="$PREFIX/bin/tailscale"
 if [[ -x "$TAILSCALED" ]]; then
     mkdir -p "$TSDIR"
+    # Kill stale tailscaled if running
+    pkill -f tailscaled 2>/dev/null || true
+    sleep 1
     rm -f "$TSDIR/tailscaled.sock"
     nohup "$TAILSCALED" --tun=userspace-networking --statedir="$TSDIR" --socket="$TSDIR/tailscaled.sock" >> "$FRAME_DATA_DIR/tailscale.log" 2>&1 &
     log "tailscaled started (PID $!)"
-    # Wait for socket to be ready (Go binary needs time to initialize)
+    # Wait for socket to appear
     for i in 1 2 3 4 5 6 7 8 9 10; do
         [[ -S "$TSDIR/tailscaled.sock" ]] && break
         sleep 1
     done
-    "$TAILSCALE" --socket="$TSDIR/tailscaled.sock" serve --bg --tcp 22 tcp://localhost:8022 >> "$LOG" 2>&1 || true
-    log "Tailscale SSH proxy configured"
+    # Wait for tailscale to reach Running state (needs network + auth)
+    TS_READY=false
+    for i in 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 16 17 18 19 20; do
+        if "$TAILSCALE" --socket="$TSDIR/tailscaled.sock" status >/dev/null 2>&1; then
+            TS_READY=true
+            break
+        fi
+        sleep 1
+    done
+    if $TS_READY; then
+        "$TAILSCALE" --socket="$TSDIR/tailscaled.sock" serve --bg --tcp 22 tcp://localhost:8022 >> "$LOG" 2>&1 || true
+        log "Tailscale SSH proxy configured"
+    else
+        log "Tailscale not ready after 30s — serve skipped (will retry on next boot)"
+    fi
 else
     log "tailscaled not found — skipping"
 fi

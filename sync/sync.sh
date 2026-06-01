@@ -148,6 +148,20 @@ sync_once() {
     return 0
 }
 
+# --- Service watchdog ---
+HTTP_PORT="${HTTP_PORT:-8080}"
+check_services() {
+    # Restart httpd if not running
+    if ! pgrep -f "busybox httpd" >/dev/null 2>&1; then
+        if [[ -d "$SLIDESHOW_DIR" ]]; then
+            log "WATCHDOG: httpd died — restarting"
+            cd "$SLIDESHOW_DIR"
+            nohup busybox httpd -f -p "$HTTP_PORT" >> "$FRAME_DATA_DIR/httpd.log" 2>&1 &
+            cd - >/dev/null
+        fi
+    fi
+}
+
 # --- Main loop ---
 log "=== Sync loop starting ==="
 log "Data dir: $FRAME_DATA_DIR"
@@ -155,6 +169,7 @@ log "Remotes: $RCLONE_REMOTES"
 log "Interval: ${SYNC_INTERVAL}s"
 
 while true; do
+    check_services
     if sync_once; then
         current_backoff="$SYNC_INTERVAL"
     else
