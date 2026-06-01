@@ -36,9 +36,12 @@ RCLONE_REMOTES="${RCLONE_REMOTES:-drive:PhotoFrame}"
 SLIDESHOW_INTERVAL="${SLIDESHOW_INTERVAL:-30}"
 FADE_DURATION="${FADE_DURATION:-1500}"
 FRAME_NAME="${FRAME_NAME:-frame}"
+MAX_PHOTOS="${MAX_PHOTOS:-500}"
+DELETE_AFTER_SYNC="${DELETE_AFTER_SYNC:-false}"
 
 RAW_DIR="$FRAME_DATA_DIR/raw"
 PHOTOS_DIR="$FRAME_DATA_DIR/photos"
+LOCKED_FILE="$FRAME_DATA_DIR/locked.txt"
 SLIDESHOW_DIR="$FRAME_DATA_DIR/slideshow"
 MANIFEST="$SLIDESHOW_DIR/manifest.json"
 CONFIG_JSON="$SLIDESHOW_DIR/config.json"
@@ -71,6 +74,40 @@ cat > "$CONFIG_JSON" <<EJSON
 EJSON
 
 current_backoff="$SYNC_INTERVAL"
+
+# Check if a filename is locked (favorited by user, exempt from FIFO deletion)
+is_locked() {
+    local filename="$1"
+    [[ -f "$LOCKED_FILE" ]] || return 1
+    grep -qxF "$filename" "$LOCKED_FILE" 2>/dev/null
+}
+
+# FIFO cleanup: remove oldest unlocked photos when over MAX_PHOTOS
+fifo_cleanup() {
+    local count=0
+    for f in "$PHOTOS_DIR"/*; do
+        [[ -f "$f" ]] && count=$((count + 1))
+    done
+
+    if (( count <= MAX_PHOTOS )); then
+        return
+    fi
+
+    local to_remove=$((count - MAX_PHOTOS))
+    log "FIFO: $count photos exceeds max $MAX_PHOTOS, removing $to_remove oldest"
+
+    # Sort by modification time (oldest first) and remove unlocked ones
+    ls -1tr "$PHOTOS_DIR" | while read -r fname && (( to_remove > 0 )); do
+        if ! is_locked "$fname"; then
+            log "FIFO removing: $fname"
+            rm -f "$PHOTOS_DIR/$fname"
+            # Also remove from raw/ so it doesn't get re-processed
+            local rname="${fname%.*}"
+            rm -f "$RAW_DIR"/"$rname".* 2>/dev/null
+            to_remove=$((to_remove - 1))
+        fi
+    done
+}
 
 sync_once() {
     local failed=false
@@ -133,10 +170,33 @@ sync_once() {
         local pbase=$(basename "$f")
         local pname="${pbase%.*}"
         if ! ls "$RAW_DIR"/"$pname".* >/dev/null 2>&1; then
-            log "Removing deleted: $pbase"
-            rm "$f"
+            if ! is_locked "$pbase"; then
+                log "Removing deleted: $pbase"
+                rm "$f"
+            fi
         fi
     done
+
+    # FIFO: if over MAX_PHOTOS, remove oldest unlocked files
+    fifo_cleanup
+
+    # Delete from remote after successful ingest (if enabled)
+    if [[ "$DELETE_AFTER_SYNC" == "true" ]] && ! $failed; then
+        for remote in $RCLONE_REMOTES; do
+            for f in "$RAW_DIR"/*; do
+                [[ -f "$f" ]] || continue
+                local rbase=$(basename "$f")
+                local rname="${rbase%.*}"
+                # Only delete if successfully processed
+                if ls "$PHOTOS_DIR"/"$rname".* >/dev/null 2>&1; then
+                    if rclone delete --config "$RCLONE_CONF" "$remote/$rbase" 2>>"$LOG_FILE"; then
+                        log "Deleted from remote: $rbase"
+                        rm "$f"
+                    fi
+                fi
+            done
+        done
+    fi
 
     # Regenerate manifest
     bash "$SCRIPT_DIR/generate-manifest.sh" "$PHOTOS_DIR" "$MANIFEST"

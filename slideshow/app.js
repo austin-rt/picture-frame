@@ -284,11 +284,23 @@
     var PAUSE_D = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";
 
     function isFav(filename) {
+        // Check Kiosk bridge first (persisted to file for sync.sh), fall back to localStorage
+        if (window.Kiosk && window.Kiosk.isLocked) {
+            try { return window.Kiosk.isLocked(filename); }
+            catch (e) {}
+        }
         try { return localStorage.getItem("fav_" + filename) === "1"; }
         catch (e) { return false; }
     }
 
     function setFav(filename, val) {
+        // Persist via Kiosk bridge (writes locked.txt for sync.sh) and localStorage
+        if (window.Kiosk) {
+            try {
+                if (val) window.Kiosk.lockItem(filename);
+                else window.Kiosk.unlockItem(filename);
+            } catch (e) {}
+        }
         try {
             if (val) localStorage.setItem("fav_" + filename, "1");
             else localStorage.removeItem("fav_" + filename);

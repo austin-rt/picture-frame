@@ -17,8 +17,14 @@ import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebSettings;
+import java.io.BufferedReader;
+import java.io.File;
+import java.io.FileReader;
+import java.io.FileWriter;
 import java.io.IOException;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Set;
 
 public class KioskActivity extends Activity {
 
@@ -182,6 +188,55 @@ public class KioskActivity extends Activity {
         public void shutdown() {
             try {
                 Runtime.getRuntime().exec(new String[]{"su", "-c", "reboot", "-p"});
+            } catch (IOException ignored) {}
+        }
+
+        @JavascriptInterface
+        public void lockItem(String filename) {
+            updateLockedFile(filename, true);
+        }
+
+        @JavascriptInterface
+        public void unlockItem(String filename) {
+            updateLockedFile(filename, false);
+        }
+
+        @JavascriptInterface
+        public boolean isLocked(String filename) {
+            Set<String> locked = readLockedSet();
+            return locked.contains(filename);
+        }
+
+        private File getLockedFile() {
+            return new File("/data/data/com.termux/files/home/frame-data/locked.txt");
+        }
+
+        private Set<String> readLockedSet() {
+            Set<String> set = new HashSet<String>();
+            File f = getLockedFile();
+            if (!f.exists()) return set;
+            try {
+                BufferedReader br = new BufferedReader(new FileReader(f));
+                String line;
+                while ((line = br.readLine()) != null) {
+                    line = line.trim();
+                    if (!line.isEmpty()) set.add(line);
+                }
+                br.close();
+            } catch (IOException ignored) {}
+            return set;
+        }
+
+        private void updateLockedFile(String filename, boolean add) {
+            Set<String> locked = readLockedSet();
+            if (add) locked.add(filename);
+            else locked.remove(filename);
+            try {
+                FileWriter fw = new FileWriter(getLockedFile());
+                for (String name : locked) {
+                    fw.write(name + "\n");
+                }
+                fw.close();
             } catch (IOException ignored) {}
         }
     }
