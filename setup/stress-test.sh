@@ -114,9 +114,9 @@ run_checks() {
         echo -n "sync=OK "
     fi
 
-    # Check HTTP response (slideshow page)
+    # Check HTTP response (slideshow page via Termux curl with full PATH)
     local http_check
-    http_check=$(adb shell "run-as com.termux sh -c 'curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/ 2>/dev/null || echo 000'" 2>&1)
+    http_check=$(adb shell "run-as com.termux sh -c 'export PATH=/data/data/com.termux/files/usr/bin:\$PATH && export LD_LIBRARY_PATH=/data/data/com.termux/files/usr/lib && curl -s -o /dev/null -w \"%{http_code}\" http://localhost:8080/ 2>/dev/null || echo 000'" 2>&1)
     if echo "$http_check" | grep -q "200"; then
         echo -n "http=200 "
     else
