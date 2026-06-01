@@ -15,6 +15,7 @@
     var imgB = document.getElementById("img-b");
     var videoEl = document.getElementById("video-player");
     var clockEl = document.getElementById("clock");
+    var drawer = document.getElementById("drawer");
 
     var photos = [];
     var queue = [];
@@ -22,9 +23,12 @@
     var back = imgB;
     var transitioning = false;
     var videoPlaying = false;
+    var paused = false;
     var intervalMs = DEFAULTS.interval * 1000;
     var fadeMs = DEFAULTS.fadeDuration;
     var slideTimer = null;
+    var drawerTimer = null;
+    var currentItem = null;
 
     var params = {};
     (function () {
@@ -159,10 +163,12 @@
         if (transitioning) return;
         var item = nextPhoto();
         if (!item) return;
+        currentItem = item;
         history.unshift(item);
         if (history.length > 50) history.pop();
         histIdx = -1;
         transitioning = true;
+        updateFavIcon();
         if (item.type === "video") {
             stopVideo();
             playVideo(item, fadeMs);
@@ -177,10 +183,14 @@
         stopVideo();
         if (histIdx > 0) {
             histIdx--;
-            showItem(history[histIdx], 250, resetTimer);
+            currentItem = history[histIdx];
+            updateFavIcon();
+            showItem(currentItem, 250, resetTimer);
         } else if (histIdx === 0 && history.length > 1) {
             histIdx = history.length - 1;
-            showItem(history[histIdx], 250, resetTimer);
+            currentItem = history[histIdx];
+            updateFavIcon();
+            showItem(currentItem, 250, resetTimer);
         } else {
             histIdx = -1;
             advance();
@@ -194,17 +204,22 @@
         var target = (histIdx < 0) ? 1 : histIdx + 1;
         if (target < history.length) {
             histIdx = target;
-            showItem(history[histIdx], 250, resetTimer);
+            currentItem = history[histIdx];
+            updateFavIcon();
+            showItem(currentItem, 250, resetTimer);
         } else if (history.length > 1) {
             histIdx = 0;
-            showItem(history[histIdx], 250, resetTimer);
+            currentItem = history[histIdx];
+            updateFavIcon();
+            showItem(currentItem, 250, resetTimer);
         }
     }
 
     function resetTimer() {
         if (slideTimer) clearInterval(slideTimer);
+        if (paused) return;
         slideTimer = setInterval(function () {
-            if (!videoPlaying) advance();
+            if (!videoPlaying && !paused) advance();
         }, intervalMs);
     }
 
@@ -261,6 +276,115 @@
     // Expose for native Java swipe injection
     window.swipeLeft = function () { goForward(); };
     window.swipeRight = function () { goBack(); };
+
+    // --- Drawer controls ---
+    var favPath = document.getElementById("fav-path");
+    var pausePath = document.getElementById("pause-path");
+    var PLAY_D = "M8 5v14l11-7z";
+    var PAUSE_D = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";
+
+    function isFav(filename) {
+        try { return localStorage.getItem("fav_" + filename) === "1"; }
+        catch (e) { return false; }
+    }
+
+    function setFav(filename, val) {
+        try {
+            if (val) localStorage.setItem("fav_" + filename, "1");
+            else localStorage.removeItem("fav_" + filename);
+        } catch (e) {}
+    }
+
+    function updateFavIcon() {
+        if (!currentItem || !favPath) return;
+        if (isFav(currentItem.filename)) {
+            favPath.setAttribute("fill", "white");
+        } else {
+            favPath.setAttribute("fill", "none");
+        }
+    }
+
+    function updatePauseIcon() {
+        if (!pausePath) return;
+        pausePath.setAttribute("d", paused ? PLAY_D : PAUSE_D);
+    }
+
+    function toggleDrawer() {
+        var isOpen = drawer.className.indexOf("open") !== -1;
+        if (isOpen) {
+            drawer.className = "";
+            if (drawerTimer) { clearTimeout(drawerTimer); drawerTimer = null; }
+        } else {
+            drawer.className = "open";
+            updateFavIcon();
+            // Auto-close after 5s
+            if (drawerTimer) clearTimeout(drawerTimer);
+            drawerTimer = setTimeout(function () {
+                drawer.className = "";
+                drawerTimer = null;
+            }, 5000);
+        }
+    }
+
+    function resetDrawerTimer() {
+        if (drawerTimer) clearTimeout(drawerTimer);
+        if (drawer.className.indexOf("open") !== -1) {
+            drawerTimer = setTimeout(function () {
+                drawer.className = "";
+                drawerTimer = null;
+            }, 5000);
+        }
+    }
+
+    // Tap on frame area toggles drawer
+    document.getElementById("frame").addEventListener("click", function (e) {
+        if (e.target && e.target.closest && e.target.closest("#drawer")) return;
+        toggleDrawer();
+    });
+
+    // Drawer button handlers
+    drawer.addEventListener("click", function (e) {
+        e.stopPropagation();
+        var btn = e.target;
+        while (btn && btn !== drawer && !btn.id) btn = btn.parentNode;
+        if (!btn || !btn.id) return;
+        resetDrawerTimer();
+
+        switch (btn.id) {
+            case "btn-fav":
+                if (currentItem) {
+                    setFav(currentItem.filename, !isFav(currentItem.filename));
+                    updateFavIcon();
+                }
+                break;
+            case "btn-prev":
+                goBack();
+                break;
+            case "btn-next":
+                goForward();
+                break;
+            case "btn-pause":
+                paused = !paused;
+                updatePauseIcon();
+                if (paused) {
+                    if (slideTimer) { clearInterval(slideTimer); slideTimer = null; }
+                    if (videoPlaying) videoEl.pause();
+                } else {
+                    if (videoPlaying) videoEl.play();
+                    resetTimer();
+                }
+                break;
+            case "btn-bright-up":
+                if (window.Kiosk) window.Kiosk.brightnessUp();
+                break;
+            case "btn-bright-down":
+                if (window.Kiosk) window.Kiosk.brightnessDown();
+                break;
+            case "btn-power":
+                if (window.Kiosk) window.Kiosk.shutdown();
+                break;
+        }
+    });
 
     // --- Init ---
     loadConfig();

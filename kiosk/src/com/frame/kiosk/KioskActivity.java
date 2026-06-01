@@ -10,12 +10,14 @@ import android.util.DisplayMetrics;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
+import android.webkit.JavascriptInterface;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.webkit.WebSettings;
+import java.io.IOException;
 import java.util.List;
 
 public class KioskActivity extends Activity {
@@ -95,6 +97,7 @@ public class KioskActivity extends Activity {
         });
 
         webView.setWebChromeClient(new WebChromeClient());
+        webView.addJavascriptInterface(new KioskBridge(), "Kiosk");
         webView.clearCache(true);
         webView.setBackgroundColor(0xFF000000);
         startTermuxDelayed();
@@ -113,30 +116,27 @@ public class KioskActivity extends Activity {
                 float dx = event.getRawX() - touchStartX;
                 float dy = event.getRawY() - touchStartY;
                 long dt = System.currentTimeMillis() - touchStartTime;
-                if (dt > 1000) break;
+                if (dt < 1000) {
+                    boolean inLeftEdge = touchStartX < screenWidth / 6;
+                    boolean inRightEdge = touchStartX > screenWidth * 5 / 6;
 
-                boolean inLeftEdge = touchStartX < screenWidth / 6;
-                boolean inRightEdge = touchStartX > screenWidth * 5 / 6;
-
-                if ((inLeftEdge || inRightEdge)
-                        && Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx)) {
-                    // Vertical swipe in edge zone: brightness
-                    if (dy < 0) {
-                        adjustBrightness(BRIGHTNESS_STEP);
-                    } else {
-                        adjustBrightness(-BRIGHTNESS_STEP);
-                    }
-                } else if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy)) {
-                    // Horizontal swipe: next/prev
-                    if (pageLoaded) {
-                        String fn = (dx < 0) ? "swipeLeft" : "swipeRight";
-                        webView.evaluateJavascript(
-                            "window." + fn + " && window." + fn + "()", null);
+                    if ((inLeftEdge || inRightEdge)
+                            && Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx)) {
+                        // Vertical swipe in edge zone: brightness
+                        adjustBrightness(dy < 0 ? BRIGHTNESS_STEP : -BRIGHTNESS_STEP);
+                    } else if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy)) {
+                        // Horizontal swipe: next/prev
+                        if (pageLoaded) {
+                            String fn = (dx < 0) ? "swipeLeft" : "swipeRight";
+                            webView.evaluateJavascript(
+                                "window." + fn + " && window." + fn + "()", null);
+                        }
                     }
                 }
                 break;
         }
-        return true;
+        // Pass all events to WebView for drawer button interaction
+        return super.dispatchTouchEvent(event);
     }
 
     private void adjustBrightness(float delta) {
@@ -145,6 +145,45 @@ public class KioskActivity extends Activity {
         WindowManager.LayoutParams lp = getWindow().getAttributes();
         lp.screenBrightness = currentBrightness;
         getWindow().setAttributes(lp);
+    }
+
+    private class KioskBridge {
+        @JavascriptInterface
+        public void setBrightness(float value) {
+            final float clamped = Math.max(BRIGHTNESS_MIN,
+                Math.min(BRIGHTNESS_MAX, value));
+            currentBrightness = clamped;
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    WindowManager.LayoutParams lp = getWindow().getAttributes();
+                    lp.screenBrightness = clamped;
+                    getWindow().setAttributes(lp);
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public float getBrightness() {
+            return currentBrightness;
+        }
+
+        @JavascriptInterface
+        public void brightnessUp() {
+            setBrightness(currentBrightness + BRIGHTNESS_STEP);
+        }
+
+        @JavascriptInterface
+        public void brightnessDown() {
+            setBrightness(currentBrightness - BRIGHTNESS_STEP);
+        }
+
+        @JavascriptInterface
+        public void shutdown() {
+            try {
+                Runtime.getRuntime().exec(new String[]{"su", "-c", "reboot", "-p"});
+            } catch (IOException ignored) {}
+        }
     }
 
     private String countdownHtml(int seconds, String message) {
