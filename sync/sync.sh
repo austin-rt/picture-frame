@@ -7,6 +7,20 @@ set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 
+# Prevent duplicate sync processes
+PIDFILE="${TMPDIR:-/tmp}/frame-sync.pid"
+if [[ -f "$PIDFILE" ]] && kill -0 "$(cat "$PIDFILE")" 2>/dev/null; then
+    echo "Sync already running (PID $(cat "$PIDFILE")), exiting."
+    exit 0
+fi
+echo $$ > "$PIDFILE"
+trap 'rm -f "$PIDFILE"' EXIT
+
+# Fix SSL certs for Go binaries (rclone) on Android 6
+if [[ -f "$PREFIX/etc/tls/cert.pem" ]]; then
+    export SSL_CERT_FILE="$PREFIX/etc/tls/cert.pem"
+fi
+
 # Source frame config
 FRAME_CONF="${FRAME_CONF:-$HOME/frame.conf}"
 if [[ -f "$FRAME_CONF" ]]; then

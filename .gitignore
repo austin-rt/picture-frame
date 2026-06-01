@@ -6,3 +6,7 @@ sync/rclone.conf
 slideshow/photos/
 slideshow/manifest.json
 slideshow/config.json
+kiosk/build/
+kiosk/debug.keystore
+tools/heic2jpg-rs/target/
+tools/heic2jpg/

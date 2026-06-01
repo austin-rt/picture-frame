@@ -24,8 +24,17 @@
     var fadeMs = DEFAULTS.fadeDuration;
     var slideTimer = null;
 
-    // Query params override config.json
-    var params = new URLSearchParams(window.location.search);
+    // Query params override config.json (manual parse for WebView < 49)
+    var params = {};
+    (function () {
+        var qs = window.location.search.substring(1);
+        if (!qs) return;
+        var pairs = qs.split("&");
+        for (var i = 0; i < pairs.length; i++) {
+            var kv = pairs[i].split("=");
+            params[decodeURIComponent(kv[0])] = decodeURIComponent(kv[1] || "");
+        }
+    })();
 
     front.style.zIndex = 2;
     front.style.opacity = 1;
@@ -107,13 +116,13 @@
 
     function applyConfig(cfg) {
         // Query params take precedence over config.json
-        var newInterval = params.has("interval")
-            ? parseInt(params.get("interval"), 10)
+        var newInterval = ("interval" in params)
+            ? parseInt(params["interval"], 10)
             : (cfg.interval || DEFAULTS.interval);
         intervalMs = newInterval * 1000;
 
-        fadeMs = params.has("fade")
-            ? parseInt(params.get("fade"), 10)
+        fadeMs = ("fade" in params)
+            ? parseInt(params["fade"], 10)
             : (cfg.fadeDuration || DEFAULTS.fadeDuration);
 
         // Restart the slide timer with the new interval

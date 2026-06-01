@@ -5,6 +5,16 @@
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+# If running from .termux/boot/, resolve sync scripts in ~/sync/
+SYNC_DIR="$HOME/sync"
+if [[ ! -f "$SYNC_DIR/sync.sh" ]]; then
+    SYNC_DIR="$SCRIPT_DIR"
+fi
+
+# Fix SSL certs for Go binaries (rclone) on Android 6
+if [[ -f "$PREFIX/etc/tls/cert.pem" ]]; then
+    export SSL_CERT_FILE="$PREFIX/etc/tls/cert.pem"
+fi
 
 # Source frame config
 FRAME_CONF="${FRAME_CONF:-$HOME/frame.conf}"
@@ -25,6 +35,17 @@ log() {
 
 log "=== Boot script starting ==="
 
+# Sync system clock via NTP (no battery-backed RTC on this device)
+if command -v ntpd >/dev/null 2>&1; then
+    ntpd -d -n -q -p pool.ntp.org >> "$LOG" 2>&1 || true
+    log "NTP time sync attempted"
+elif command -v busybox >/dev/null 2>&1 && busybox ntpd --help >/dev/null 2>&1; then
+    busybox ntpd -d -n -q -p pool.ntp.org >> "$LOG" 2>&1 || true
+    log "NTP time sync attempted (busybox)"
+else
+    log "No NTP client available — clock may drift after power loss"
+fi
+
 # Acquire wake lock to prevent Android from sleeping Termux
 termux-wake-lock 2>/dev/null || true
 
@@ -36,7 +57,7 @@ else
     log "sshd not installed — skipping (run: pkg install openssh)"
 fi
 
-# Start local HTTP server for Fully Kiosk to load the slideshow
+# Start local HTTP server for kiosk WebView to load the slideshow
 SLIDESHOW_DIR="$FRAME_DATA_DIR/slideshow"
 if [[ -d "$SLIDESHOW_DIR" ]]; then
     cd "$SLIDESHOW_DIR"
@@ -47,8 +68,12 @@ else
     log "Slideshow dir not found at $SLIDESHOW_DIR — sync will create it"
 fi
 
+# Launch kiosk slideshow app
+am start -n com.frame.kiosk/.KioskActivity >> "$LOG" 2>&1 || true
+log "Kiosk app launched"
+
 # Start sync loop in background
-nohup bash "$SCRIPT_DIR/sync.sh" >> "$FRAME_DATA_DIR/sync.log" 2>&1 &
+nohup bash "$SYNC_DIR/sync.sh" >> "$FRAME_DATA_DIR/sync.log" 2>&1 &
 log "Sync loop started (PID $!)"
 
 log "Boot script done."
