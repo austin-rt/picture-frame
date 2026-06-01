@@ -10,15 +10,24 @@ MANIFEST="$2"
 echo '[' > "$MANIFEST.tmp"
 
 first=true
-for f in "$PHOTOS_DIR"/*.jpg; do
+for f in "$PHOTOS_DIR"/*; do
     [[ -f "$f" ]] || continue
     filename=$(basename "$f")
+    ext="${filename##*.}"
+    ext_lower=$(echo "$ext" | tr 'A-Z' 'a-z')
+
+    case "$ext_lower" in
+        jpg) type="photo" ;;
+        mp4) type="video" ;;
+        *) continue ;;
+    esac
+
     if $first; then
         first=false
     else
         echo ',' >> "$MANIFEST.tmp"
     fi
-    printf '  {"filename": "%s"}' "$filename" >> "$MANIFEST.tmp"
+    printf '  {"filename": "%s", "type": "%s"}' "$filename" "$type" >> "$MANIFEST.tmp"
 done
 
 echo '' >> "$MANIFEST.tmp"

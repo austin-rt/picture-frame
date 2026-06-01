@@ -13,6 +13,7 @@
 
     var imgA = document.getElementById("img-a");
     var imgB = document.getElementById("img-b");
+    var videoEl = document.getElementById("video-player");
     var clockEl = document.getElementById("clock");
 
     var photos = [];
@@ -20,6 +21,7 @@
     var front = imgA;
     var back = imgB;
     var transitioning = false;
+    var videoPlaying = false;
     var intervalMs = DEFAULTS.interval * 1000;
     var fadeMs = DEFAULTS.fadeDuration;
     var slideTimer = null;
@@ -82,35 +84,103 @@
         }, ms + 100);
     }
 
+    // --- Video ---
+    function stopVideo() {
+        if (!videoPlaying) return;
+        videoEl.pause();
+        videoEl.style.opacity = 0;
+        videoEl.style.zIndex = 0;
+        videoEl.removeAttribute("src");
+        videoPlaying = false;
+    }
+
+    function playVideo(item, duration, done) {
+        var ms = duration || fadeMs;
+        var url = PHOTO_BASE + item.filename;
+
+        videoEl.style.transition = "none";
+        videoEl.style.opacity = 0;
+        videoEl.style.zIndex = 3;
+        videoEl.src = url;
+        videoEl.load();
+
+        var started = false;
+        var onReady = function () {
+            if (started) return;
+            started = true;
+            videoEl.removeEventListener("canplay", onReady);
+
+            // Fade in video, fade out current photo
+            front.style.transition = "opacity " + ms + "ms ease-in-out";
+            front.style.opacity = 0;
+            videoEl.offsetHeight;
+            videoEl.style.transition = "opacity " + ms + "ms ease-in-out";
+            videoEl.style.opacity = 1;
+            videoEl.play();
+            videoPlaying = true;
+
+            setTimeout(function () {
+                transitioning = false;
+                if (done) done();
+            }, ms + 100);
+        };
+
+        videoEl.addEventListener("canplay", onReady);
+        // Fallback if canplay already fired
+        if (videoEl.readyState >= 3) onReady();
+    }
+
+    function onVideoEnded() {
+        // Video finished — advance to next item
+        stopVideo();
+        advance();
+        resetTimer();
+    }
+
+    videoEl.addEventListener("ended", onVideoEnded);
+
     // --- History (circular) ---
     var history = [];
     var histIdx = -1;
 
+    function showItem(item, duration, done) {
+        if (!item) return;
+        transitioning = true;
+        if (item.type === "video") {
+            stopVideo();
+            playVideo(item, duration, done);
+        } else {
+            stopVideo();
+            crossfade(PHOTO_BASE + item.filename, duration, done);
+        }
+    }
+
     function advance() {
         if (transitioning) return;
-        var photo = nextPhoto();
-        if (!photo) return;
-        history.unshift(photo);
+        var item = nextPhoto();
+        if (!item) return;
+        history.unshift(item);
         if (history.length > 50) history.pop();
         histIdx = -1;
         transitioning = true;
-        crossfade(PHOTO_BASE + photo.filename, fadeMs);
-    }
-
-    function showPhoto(photo, done) {
-        if (!photo) return;
-        transitioning = true;
-        crossfade(PHOTO_BASE + photo.filename, 250, done);
+        if (item.type === "video") {
+            stopVideo();
+            playVideo(item, fadeMs);
+        } else {
+            stopVideo();
+            crossfade(PHOTO_BASE + item.filename, fadeMs);
+        }
     }
 
     function goForward() {
         if (transitioning) return;
+        stopVideo();
         if (histIdx > 0) {
             histIdx--;
-            showPhoto(history[histIdx], resetTimer);
+            showItem(history[histIdx], 250, resetTimer);
         } else if (histIdx === 0 && history.length > 1) {
             histIdx = history.length - 1;
-            showPhoto(history[histIdx], resetTimer);
+            showItem(history[histIdx], 250, resetTimer);
         } else {
             histIdx = -1;
             advance();
@@ -120,19 +190,22 @@
 
     function goBack() {
         if (transitioning) return;
+        stopVideo();
         var target = (histIdx < 0) ? 1 : histIdx + 1;
         if (target < history.length) {
             histIdx = target;
-            showPhoto(history[histIdx], resetTimer);
+            showItem(history[histIdx], 250, resetTimer);
         } else if (history.length > 1) {
             histIdx = 0;
-            showPhoto(history[histIdx], resetTimer);
+            showItem(history[histIdx], 250, resetTimer);
         }
     }
 
     function resetTimer() {
         if (slideTimer) clearInterval(slideTimer);
-        slideTimer = setInterval(advance, intervalMs);
+        slideTimer = setInterval(function () {
+            if (!videoPlaying) advance();
+        }, intervalMs);
     }
 
     function loadManifest() {
@@ -140,6 +213,10 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (Array.isArray(data) && data.length > 0) {
+                    // Default type to "photo" for backwards compatibility
+                    for (var i = 0; i < data.length; i++) {
+                        if (!data[i].type) data[i].type = "photo";
+                    }
                     photos = data;
                     if (!front.style.backgroundImage) {
                         advance();
@@ -169,7 +246,9 @@
             : (cfg.fadeDuration || DEFAULTS.fadeDuration);
 
         if (slideTimer) clearInterval(slideTimer);
-        slideTimer = setInterval(advance, intervalMs);
+        slideTimer = setInterval(function () {
+            if (!videoPlaying) advance();
+        }, intervalMs);
     }
 
     function loadConfig() {

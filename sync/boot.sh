@@ -72,6 +72,21 @@ fi
 am start -n com.frame.kiosk/.KioskActivity >> "$LOG" 2>&1 || true
 log "Kiosk app launched"
 
+# Start Tailscale (userspace networking, no root/TUN needed)
+TSDIR="$HOME/.tailscale"
+TAILSCALED="$PREFIX/bin/tailscaled"
+TAILSCALE="$PREFIX/bin/tailscale"
+if [[ -x "$TAILSCALED" ]]; then
+    mkdir -p "$TSDIR"
+    nohup "$TAILSCALED" --tun=userspace-networking --statedir="$TSDIR" --socket="$TSDIR/tailscaled.sock" >> "$FRAME_DATA_DIR/tailscale.log" 2>&1 &
+    log "tailscaled started (PID $!)"
+    sleep 3
+    "$TAILSCALE" --socket="$TSDIR/tailscaled.sock" serve --bg --tcp 22 tcp://localhost:8022 >> "$LOG" 2>&1 || true
+    log "Tailscale SSH proxy configured"
+else
+    log "tailscaled not found — skipping"
+fi
+
 # Start sync loop in background
 nohup bash "$SYNC_DIR/sync.sh" >> "$FRAME_DATA_DIR/sync.log" 2>&1 &
 log "Sync loop started (PID $!)"

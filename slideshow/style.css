@@ -32,6 +32,13 @@ html, body {
     background-repeat: no-repeat;
 }
 
+#video-player {
+    object-fit: contain;
+    z-index: 0;
+    opacity: 0;
+    background: transparent;
+}
+
 #clock {
     position: absolute;
     bottom: 20px;

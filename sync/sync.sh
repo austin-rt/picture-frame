@@ -87,27 +87,53 @@ sync_once() {
         fi
     done
 
-    # Process new/changed images
+    # Known file extensions
+    local IMG_EXTS="jpg jpeg png heic heif bmp tiff"
+    local VID_EXTS="mp4 mov avi mkv webm m4v 3gp"
+
+    is_image() {
+        local ext=$(echo "${1##*.}" | tr 'A-Z' 'a-z')
+        for e in $IMG_EXTS; do [[ "$ext" == "$e" ]] && return 0; done
+        return 1
+    }
+
+    is_video() {
+        local ext=$(echo "${1##*.}" | tr 'A-Z' 'a-z')
+        for e in $VID_EXTS; do [[ "$ext" == "$e" ]] && return 0; done
+        return 1
+    }
+
+    # Process new/changed files
     local processed=0
     for f in "$RAW_DIR"/*; do
         [[ -f "$f" ]] || continue
         base=$(basename "$f")
         name="${base%.*}"
-        out="$PHOTOS_DIR/${name}.jpg"
 
-        if bash "$SCRIPT_DIR/process-image.sh" "$f" "$out"; then
-            processed=$((processed + 1))
-        else
-            log "Failed to process: $base"
+        if is_image "$base"; then
+            out="$PHOTOS_DIR/${name}.jpg"
+            if bash "$SCRIPT_DIR/process-image.sh" "$f" "$out"; then
+                processed=$((processed + 1))
+            else
+                log "Failed to process image: $base"
+            fi
+        elif is_video "$base"; then
+            out="$PHOTOS_DIR/${name}.mp4"
+            if bash "$SCRIPT_DIR/process-video.sh" "$f" "$out"; then
+                processed=$((processed + 1))
+            else
+                log "Failed to process video: $base"
+            fi
         fi
     done
 
-    # Remove processed photos whose source no longer exists in raw/
-    for f in "$PHOTOS_DIR"/*.jpg; do
+    # Remove processed files whose source no longer exists in raw/
+    for f in "$PHOTOS_DIR"/*; do
         [[ -f "$f" ]] || continue
-        base=$(basename "$f" .jpg)
-        if ! ls "$RAW_DIR"/"$base".* >/dev/null 2>&1; then
-            log "Removing deleted photo: $(basename "$f")"
+        local pbase=$(basename "$f")
+        local pname="${pbase%.*}"
+        if ! ls "$RAW_DIR"/"$pname".* >/dev/null 2>&1; then
+            log "Removing deleted: $pbase"
             rm "$f"
         fi
     done
