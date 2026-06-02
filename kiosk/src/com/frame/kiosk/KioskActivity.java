@@ -33,7 +33,7 @@ import android.os.SystemClock;
 public class KioskActivity extends Activity {
 
     private static final String PAGE_URL = "http://localhost:8080";
-    private static final int INITIAL_WAIT_MS = 15000;
+    private static final int INITIAL_WAIT_MS = 20000;
     private static final int RETRY_DELAY_MS = 5000;
 
     private WebView webView;
@@ -41,6 +41,7 @@ public class KioskActivity extends Activity {
     private boolean termuxStarted = false;
     private boolean pageLoaded = false;
     private boolean initialWaitDone = false;
+    private int retryCount = 0;
 
     private float touchStartX, touchStartY;
     private long touchStartTime;
@@ -93,9 +94,19 @@ public class KioskActivity extends Activity {
                 super.onReceivedError(view, errorCode, description, failingUrl);
                 if (!initialWaitDone) return;
                 pageLoaded = false;
+                retryCount++;
+
+                if (retryCount >= 5) {
+                    // Force restart Termux and re-run boot scripts
+                    retryCount = 0;
+                    forceRestartTermux();
+                    return;
+                }
+
                 final int secs = RETRY_DELAY_MS / 1000;
                 webView.loadDataWithBaseURL(null,
-                    countdownHtml(secs, "Retrying\u2026"),
+                    countdownHtml(secs,
+                        "Retrying (" + retryCount + "/5)\u2026"),
                     "text/html", "utf-8", null);
                 handler.postDelayed(new Runnable() {
                     @Override
@@ -355,30 +366,64 @@ public class KioskActivity extends Activity {
     private void startTermuxDelayed() {
         if (termuxStarted) return;
         termuxStarted = true;
+        launchTermuxAndBoot(2000);
+    }
 
-        // Launch Termux after 2s to ensure services start (boot scripts, httpd).
-        // Bring kiosk back to front after 500ms to minimize the flash.
+    private void launchTermuxAndBoot(int delayMs) {
+        // Step 1: Launch TermuxActivity (takes it out of Android's "stopped" state)
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                if (!isTermuxRunning()) {
-                    Intent termux = new Intent();
-                    termux.setClassName("com.termux", "com.termux.app.TermuxActivity");
-                    termux.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                        | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-                    try {
-                        startActivity(termux);
-                    } catch (Exception ignored) {}
-
-                    handler.postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            bringToFront();
-                        }
-                    }, 500);
-                }
+                Intent termux = new Intent();
+                termux.setClassName("com.termux", "com.termux.app.TermuxActivity");
+                termux.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+                try { startActivity(termux); } catch (Exception ignored) {}
             }
-        }, 2000);
+        }, delayMs);
+
+        // Step 2: After Termux has 3s to initialize, send BOOT_COMPLETED
+        // to Termux:Boot so boot.sh runs (starts httpd, sshd, sync)
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Runtime.getRuntime().exec(new String[]{
+                        "am", "broadcast",
+                        "-a", "android.intent.action.BOOT_COMPLETED",
+                        "-p", "com.termux.boot"
+                    });
+                } catch (Exception ignored) {}
+            }
+        }, delayMs + 3000);
+
+        // Step 3: Bring kiosk back to front
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                bringToFront();
+            }
+        }, delayMs + 5000);
+    }
+
+    private void forceRestartTermux() {
+        webView.loadDataWithBaseURL(null,
+            countdownHtml(15, "Restarting services\u2026"),
+            "text/html", "utf-8", null);
+        try {
+            Runtime.getRuntime().exec(new String[]{
+                "am", "force-stop", "com.termux"
+            });
+        } catch (Exception ignored) {}
+        // Relaunch after force-stop
+        launchTermuxAndBoot(2000);
+        // Try loading page after 15s
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                webView.loadUrl(PAGE_URL);
+            }
+        }, 15000);
     }
 
     private void bringToFront() {
