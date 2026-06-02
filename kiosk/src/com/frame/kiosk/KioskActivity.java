@@ -353,25 +353,32 @@ public class KioskActivity extends Activity {
     }
 
     private void startTermuxDelayed() {
-        // Termux:Boot starts services automatically on boot.
-        // Previously launched TermuxActivity here as a safety net, but it
-        // caused a visible flash during the countdown.  Stress testing
-        // confirmed Termux:Boot is reliable, so we just poke the service.
         if (termuxStarted) return;
         termuxStarted = true;
 
-        new Handler().postDelayed(new Runnable() {
+        // Launch Termux after 2s to ensure services start (boot scripts, httpd).
+        // Bring kiosk back to front after 500ms to minimize the flash.
+        handler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 if (!isTermuxRunning()) {
+                    Intent termux = new Intent();
+                    termux.setClassName("com.termux", "com.termux.app.TermuxActivity");
+                    termux.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                        | Intent.FLAG_ACTIVITY_NO_ANIMATION);
                     try {
-                        Runtime.getRuntime().exec(new String[]{
-                            "am", "startservice", "com.termux/.app.TermuxService"
-                        });
+                        startActivity(termux);
                     } catch (Exception ignored) {}
+
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            bringToFront();
+                        }
+                    }, 500);
                 }
             }
-        }, 5000);
+        }, 2000);
     }
 
     private void bringToFront() {
