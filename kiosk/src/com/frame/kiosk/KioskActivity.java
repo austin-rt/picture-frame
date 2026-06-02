@@ -243,6 +243,28 @@ public class KioskActivity extends Activity {
         }
 
         @JavascriptInterface
+        public boolean getDeleteAfterSync() {
+            File f = new File("/data/data/com.termux/files/home/frame-data/delete_after_sync");
+            if (!f.exists()) return false;
+            try {
+                BufferedReader br = new BufferedReader(new FileReader(f));
+                String val = br.readLine();
+                br.close();
+                return "true".equals(val != null ? val.trim() : "");
+            } catch (IOException e) { return false; }
+        }
+
+        @JavascriptInterface
+        public void setDeleteAfterSync(boolean enabled) {
+            try {
+                File f = new File("/data/data/com.termux/files/home/frame-data/delete_after_sync");
+                FileWriter fw = new FileWriter(f);
+                fw.write(enabled ? "true" : "false");
+                fw.close();
+            } catch (IOException ignored) {}
+        }
+
+        @JavascriptInterface
         public void lockItem(String filename) {
             updateLockedFile(filename, true);
         }

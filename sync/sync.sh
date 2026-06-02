@@ -39,6 +39,11 @@ FRAME_NAME="${FRAME_NAME:-frame}"
 MAX_PHOTOS="${MAX_PHOTOS:-500}"
 MAX_VIDEO_DURATION="${MAX_VIDEO_DURATION:-120}"
 DELETE_AFTER_SYNC="${DELETE_AFTER_SYNC:-false}"
+# Settings UI override (written by kiosk app)
+_UI_DEL="$HOME/frame-data/delete_after_sync"
+if [[ -f "$_UI_DEL" ]]; then
+    DELETE_AFTER_SYNC="$(cat "$_UI_DEL")"
+fi
 
 export FRAME_WIDTH="${FRAME_WIDTH:-1280}"
 export FRAME_HEIGHT="${FRAME_HEIGHT:-800}"

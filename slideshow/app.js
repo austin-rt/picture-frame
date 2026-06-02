@@ -660,6 +660,44 @@
         }
     })();
 
+    // Settings: delete from source toggle
+    (function () {
+        var btnOff = document.getElementById("del-src-off");
+        var btnOn = document.getElementById("del-src-on");
+        if (!btnOff || !btnOn) return;
+
+        function updateDeleteToggle() {
+            var enabled = false;
+            if (window.Kiosk && window.Kiosk.getDeleteAfterSync) {
+                try { enabled = window.Kiosk.getDeleteAfterSync(); } catch (e) {}
+            }
+            btnOff.className = enabled ? "settings-opt" : "settings-opt active";
+            btnOn.className = enabled ? "settings-opt active" : "settings-opt";
+        }
+
+        btnOff.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (window.Kiosk && window.Kiosk.setDeleteAfterSync) {
+                window.Kiosk.setDeleteAfterSync(false);
+            }
+            updateDeleteToggle();
+        });
+        btnOn.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (window.Kiosk && window.Kiosk.setDeleteAfterSync) {
+                window.Kiosk.setDeleteAfterSync(true);
+            }
+            updateDeleteToggle();
+        });
+
+        // Update on settings open
+        var origOpen = openSettings;
+        openSettings = function () {
+            origOpen();
+            updateDeleteToggle();
+        };
+    })();
+
     // Settings: system buttons
     (function () {
         var wifi = document.getElementById("sys-wifi");
