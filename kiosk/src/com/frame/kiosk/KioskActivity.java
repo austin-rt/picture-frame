@@ -7,6 +7,7 @@ import android.content.Intent;
 import android.os.Bundle;
 import android.os.Handler;
 import android.util.DisplayMetrics;
+import android.util.Log;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -32,6 +33,7 @@ import android.os.SystemClock;
 
 public class KioskActivity extends Activity {
 
+    private static final String TAG = "KioskActivity";
     private static final String PAGE_URL = "http://localhost:8080";
     private static final int INITIAL_WAIT_MS = 20000;
     private static final int RETRY_DELAY_MS = 5000;
@@ -42,6 +44,7 @@ public class KioskActivity extends Activity {
     private boolean pageLoaded = false;
     private boolean initialWaitDone = false;
     private int retryCount = 0;
+    private boolean bouncingTermux = false;
 
     private float touchStartX, touchStartY;
     private long touchStartTime;
@@ -54,6 +57,7 @@ public class KioskActivity extends Activity {
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
+        Log.i(TAG, "onCreate");
 
         DisplayMetrics dm = new DisplayMetrics();
         getWindowManager().getDefaultDisplay().getMetrics(dm);
@@ -85,7 +89,11 @@ public class KioskActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                pageLoaded = true;
+                if (PAGE_URL.equals(url)) {
+                    Log.i(TAG, "Page loaded successfully");
+                    pageLoaded = true;
+                    retryCount = 0;
+                }
             }
 
             @Override
@@ -95,25 +103,51 @@ public class KioskActivity extends Activity {
                 if (!initialWaitDone) return;
                 pageLoaded = false;
                 retryCount++;
+                Log.w(TAG, "Page load error #" + retryCount
+                    + ": " + description + " (" + errorCode + ")");
 
-                if (retryCount >= 5) {
-                    // Force restart Termux and re-run boot scripts
-                    retryCount = 0;
-                    forceRestartTermux();
-                    return;
+                if (retryCount <= 2) {
+                    // First failures: retry invisible boot trigger
+                    Log.i(TAG, "Retrying Termux boot (invisible)");
+                    webView.loadDataWithBaseURL(null,
+                        countdownHtml(15, "Starting services\u2026"),
+                        "text/html", "utf-8", null);
+                    triggerTermuxBoot(500);
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            Log.i(TAG, "Retrying page load");
+                            webView.loadUrl(PAGE_URL);
+                        }
+                    }, 15000);
+                } else if (retryCount == 3) {
+                    // Third failure: bounce TermuxActivity as last resort
+                    // (.profile auto-starts boot.sh)
+                    Log.i(TAG, "Bouncing TermuxActivity as fallback");
+                    webView.loadDataWithBaseURL(null,
+                        countdownHtml(15, "Starting services\u2026"),
+                        "text/html", "utf-8", null);
+                    bounceTermux(500);
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            webView.loadUrl(PAGE_URL);
+                        }
+                    }, 15000);
+                } else {
+                    // Keep retrying
+                    final int secs = RETRY_DELAY_MS / 1000;
+                    webView.loadDataWithBaseURL(null,
+                        countdownHtml(secs,
+                            "Retrying (" + retryCount + ")\u2026"),
+                        "text/html", "utf-8", null);
+                    handler.postDelayed(new Runnable() {
+                        @Override
+                        public void run() {
+                            webView.loadUrl(PAGE_URL);
+                        }
+                    }, RETRY_DELAY_MS);
                 }
-
-                final int secs = RETRY_DELAY_MS / 1000;
-                webView.loadDataWithBaseURL(null,
-                    countdownHtml(secs,
-                        "Retrying (" + retryCount + "/5)\u2026"),
-                    "text/html", "utf-8", null);
-                handler.postDelayed(new Runnable() {
-                    @Override
-                    public void run() {
-                        webView.loadUrl(PAGE_URL);
-                    }
-                }, RETRY_DELAY_MS);
             }
         });
 
@@ -121,8 +155,23 @@ public class KioskActivity extends Activity {
         webView.addJavascriptInterface(new KioskBridge(), "Kiosk");
         webView.clearCache(true);
         webView.setBackgroundColor(0xFF000000);
-        startTermuxDelayed();
+        startTermux();
         showCountdown(INITIAL_WAIT_MS / 1000);
+    }
+
+    @Override
+    protected void onStop() {
+        super.onStop();
+        if (bouncingTermux) {
+            bouncingTermux = false;
+            Log.i(TAG, "onStop: bouncing back from Termux");
+            handler.post(new Runnable() {
+                @Override
+                public void run() {
+                    bringToFront();
+                }
+            });
+        }
     }
 
     @Override
@@ -143,10 +192,8 @@ public class KioskActivity extends Activity {
 
                     if ((inLeftEdge || inRightEdge)
                             && Math.abs(dy) > 60 && Math.abs(dy) > Math.abs(dx)) {
-                        // Vertical swipe in edge zone: brightness
                         adjustBrightness(dy < 0 ? BRIGHTNESS_STEP : -BRIGHTNESS_STEP);
                     } else if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy)) {
-                        // Horizontal swipe: next/prev
                         if (pageLoaded) {
                             String fn = (dx < 0) ? "swipeLeft" : "swipeRight";
                             webView.evaluateJavascript(
@@ -156,7 +203,6 @@ public class KioskActivity extends Activity {
                 }
                 break;
         }
-        // Pass all events to WebView for drawer button interaction
         return super.dispatchTouchEvent(event);
     }
 
@@ -222,7 +268,6 @@ public class KioskActivity extends Activity {
                         Intent wifi = new Intent(Settings.ACTION_WIFI_SETTINGS);
                         wifi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(wifi);
-                        // Auto-return to kiosk after 30s (no back button in kiosk mode)
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
@@ -358,72 +403,98 @@ public class KioskActivity extends Activity {
             @Override
             public void run() {
                 initialWaitDone = true;
+                Log.i(TAG, "Initial wait done, loading page");
                 webView.loadUrl(PAGE_URL);
             }
         }, seconds * 1000);
     }
 
-    private void startTermuxDelayed() {
+    /**
+     * Starts Termux services invisibly during the countdown.
+     * On a normal power cycle, Termux:Boot receives the system's
+     * BOOT_COMPLETED automatically. This method is a safety net for
+     * when Termux is in Android's stopped state (after force-stop).
+     */
+    private void startTermux() {
         if (termuxStarted) return;
         termuxStarted = true;
-        launchTermuxAndBoot(2000);
+        Log.i(TAG, "Starting Termux boot sequence");
+        triggerTermuxBoot(2000);
     }
 
-    private void launchTermuxAndBoot(int delayMs) {
-        // Step 1: Launch TermuxActivity (takes it out of Android's "stopped" state)
+    /**
+     * Invisible Termux boot — two-pronged approach, all via root, no UI:
+     *
+     * 1. Directly start busybox httpd as root to serve the slideshow.
+     *    This is instant and doesn't depend on Termux being un-stopped.
+     *    When boot.sh eventually runs, it kills this root httpd and
+     *    starts its own — seamless handoff.
+     *
+     * 2. Send BOOT_COMPLETED as root to trigger the full boot.sh
+     *    (sshd, sync, tailscale). This may or may not work depending
+     *    on whether Termux:Boot is in stopped state, but the httpd
+     *    from step 1 guarantees the slideshow loads regardless.
+     */
+    private void triggerTermuxBoot(int delayMs) {
+        // Step 1: Start httpd directly as root — guaranteed to work
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                Intent termux = new Intent();
-                termux.setClassName("com.termux", "com.termux.app.TermuxActivity");
-                termux.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
-                    | Intent.FLAG_ACTIVITY_NO_ANIMATION);
-                try { startActivity(termux); } catch (Exception ignored) {}
+                try {
+                    String slideshow = "/data/data/com.termux/files/home/frame-data/slideshow";
+                    String busybox = "/data/data/com.termux/files/usr/bin/busybox";
+                    Runtime.getRuntime().exec(new String[]{
+                        "su", "-c",
+                        "cd " + slideshow + " && "
+                        + busybox + " httpd -f -p 8080 &"
+                    });
+                    Log.i(TAG, "Root httpd started");
+                } catch (Exception e) {
+                    Log.w(TAG, "Root httpd failed: " + e.getMessage());
+                }
             }
         }, delayMs);
 
-        // Step 2: After Termux has 3s to initialize, send BOOT_COMPLETED
-        // to Termux:Boot so boot.sh runs (starts httpd, sshd, sync)
+        // Step 2: Try full boot.sh via BOOT_COMPLETED (for sshd, sync, etc.)
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
                 try {
                     Runtime.getRuntime().exec(new String[]{
-                        "am", "broadcast",
-                        "-a", "android.intent.action.BOOT_COMPLETED",
-                        "-p", "com.termux.boot"
+                        "su", "-c",
+                        "am broadcast -a android.intent.action.BOOT_COMPLETED -p com.termux.boot"
                     });
-                } catch (Exception ignored) {}
+                    Log.i(TAG, "Root BOOT_COMPLETED broadcast sent");
+                } catch (Exception e) {
+                    Log.w(TAG, "Root broadcast failed: " + e.getMessage());
+                }
             }
         }, delayMs + 3000);
-
-        // Step 3: Bring kiosk back to front
-        handler.postDelayed(new Runnable() {
-            @Override
-            public void run() {
-                bringToFront();
-            }
-        }, delayMs + 5000);
     }
 
-    private void forceRestartTermux() {
-        webView.loadDataWithBaseURL(null,
-            countdownHtml(15, "Restarting services\u2026"),
-            "text/html", "utf-8", null);
-        try {
-            Runtime.getRuntime().exec(new String[]{
-                "am", "force-stop", "com.termux"
-            });
-        } catch (Exception ignored) {}
-        // Relaunch after force-stop
-        launchTermuxAndBoot(2000);
-        // Try loading page after 15s
+    /**
+     * Last-resort fallback: briefly launch TermuxActivity to trigger
+     * ~/.profile → boot.sh. The bouncingTermux flag makes onStop()
+     * immediately bring kiosk back.
+     */
+    private void bounceTermux(int delayMs) {
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
-                webView.loadUrl(PAGE_URL);
+                Log.i(TAG, "Bouncing TermuxActivity (last resort)");
+                bouncingTermux = true;
+                Intent termux = new Intent();
+                termux.setClassName("com.termux", "com.termux.app.TermuxActivity");
+                termux.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_NO_ANIMATION);
+                try {
+                    startActivity(termux);
+                } catch (Exception e) {
+                    Log.e(TAG, "TermuxActivity failed: " + e.getMessage());
+                    bouncingTermux = false;
+                }
             }
-        }, 15000);
+        }, delayMs);
     }
 
     private void bringToFront() {
@@ -434,19 +505,6 @@ public class KioskActivity extends Activity {
                 tasks.get(0).moveToFront();
             }
         }
-    }
-
-    private boolean isTermuxRunning() {
-        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        if (am != null) {
-            List<ActivityManager.RunningAppProcessInfo> procs = am.getRunningAppProcesses();
-            if (procs != null) {
-                for (ActivityManager.RunningAppProcessInfo proc : procs) {
-                    if ("com.termux".equals(proc.processName)) return true;
-                }
-            }
-        }
-        return false;
     }
 
     @Override
