@@ -23,6 +23,7 @@
 
     var settingsPanel = document.getElementById("settings-panel");
     var pauseLabel = document.getElementById("pause-label");
+    var thumbStrip = document.getElementById("thumb-strip");
 
     var photos = [];
     var queue = [];
@@ -122,7 +123,6 @@
             started = true;
             videoEl.removeEventListener("canplay", onReady);
 
-            // Fade in video, fade out current photo
             front.style.transition = "opacity " + ms + "ms ease-in-out";
             front.style.opacity = 0;
             videoEl.offsetHeight;
@@ -139,12 +139,10 @@
         };
 
         videoEl.addEventListener("canplay", onReady);
-        // Fallback if canplay already fired
         if (videoEl.readyState >= 3) onReady();
     }
 
     function onVideoEnded() {
-        // Video finished — advance to next item
         stopVideo();
         advance();
         resetTimer();
@@ -183,7 +181,6 @@
         }
     });
 
-    // Tap on progress bar to seek
     if (videoBarEl) {
         videoBarEl.addEventListener("click", function (e) {
             e.stopPropagation();
@@ -282,7 +279,6 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 if (Array.isArray(data) && data.length > 0) {
-                    // Default type to "photo" for backwards compatibility
                     for (var i = 0; i < data.length; i++) {
                         if (!data[i].type) data[i].type = "photo";
                     }
@@ -305,7 +301,6 @@
     }
 
     function applyConfig(cfg) {
-        // Priority: query params > localStorage > config.json > defaults
         var savedInterval = null;
         var savedFade = null;
         try {
@@ -337,18 +332,16 @@
             .catch(function () { applyConfig({}); });
     }
 
-    // Expose for native Java swipe injection
     window.swipeLeft = function () { goForward(); };
     window.swipeRight = function () { goBack(); };
 
-    // --- Drawer controls ---
+    // --- Fav / Pause icons ---
     var favPath = document.getElementById("fav-path");
     var pausePath = document.getElementById("pause-path");
     var PLAY_D = "M8 5v14l11-7z";
     var PAUSE_D = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";
 
     function isFav(filename) {
-        // Check Kiosk bridge first (persisted to file for sync.sh), fall back to localStorage
         if (window.Kiosk && window.Kiosk.isLocked) {
             try { return window.Kiosk.isLocked(filename); }
             catch (e) {}
@@ -358,7 +351,6 @@
     }
 
     function setFav(filename, val) {
-        // Persist via Kiosk bridge (writes locked.txt for sync.sh) and localStorage
         if (window.Kiosk) {
             try {
                 if (val) window.Kiosk.lockItem(filename);
@@ -388,18 +380,68 @@
         if (pauseLabel) pauseLabel.textContent = paused ? "Play" : "Pause";
     }
 
+    // --- Thumbnail strip ---
+    function populateThumbs() {
+        if (!thumbStrip) return;
+        thumbStrip.innerHTML = "";
+        var count = Math.min(history.length, 20);
+        for (var i = 0; i < count; i++) {
+            var item = history[i];
+            var el = document.createElement("div");
+            el.className = "thumb" + (item === currentItem ? " active" : "");
+            if (item.type !== "video") {
+                el.style.backgroundImage = "url(" + PHOTO_BASE + item.filename + ")";
+            }
+            el.setAttribute("data-idx", String(i));
+            thumbStrip.appendChild(el);
+        }
+    }
+
+    function showThumbs() {
+        if (!thumbStrip || videoPlaying) return;
+        populateThumbs();
+        thumbStrip.className = "open";
+    }
+
+    function hideThumbs() {
+        if (thumbStrip) thumbStrip.className = "";
+    }
+
+    if (thumbStrip) {
+        thumbStrip.addEventListener("click", function (e) {
+            e.stopPropagation();
+            var el = e.target;
+            while (el && el !== thumbStrip && !el.getAttribute("data-idx")) {
+                el = el.parentNode;
+            }
+            if (!el || el === thumbStrip) return;
+            var idx = parseInt(el.getAttribute("data-idx"), 10);
+            if (idx >= 0 && idx < history.length) {
+                histIdx = idx;
+                currentItem = history[histIdx];
+                updateFavIcon();
+                showItem(currentItem, 250, resetTimer);
+                populateThumbs();
+                resetDrawerTimer();
+            }
+        });
+    }
+
+    // --- Drawer ---
     function toggleDrawer() {
         var isOpen = drawer.className.indexOf("open") !== -1;
         if (isOpen) {
             drawer.className = "";
+            hideThumbs();
             if (drawerTimer) { clearTimeout(drawerTimer); drawerTimer = null; }
         } else {
             drawer.className = "open";
             updateFavIcon();
-            // Auto-close after 5s
+            showThumbs();
             if (drawerTimer) clearTimeout(drawerTimer);
             drawerTimer = setTimeout(function () {
                 drawer.className = "";
+                hideThumbs();
                 drawerTimer = null;
             }, 5000);
         }
@@ -410,20 +452,20 @@
         if (drawer.className.indexOf("open") !== -1) {
             drawerTimer = setTimeout(function () {
                 drawer.className = "";
+                hideThumbs();
                 drawerTimer = null;
             }, 5000);
         }
     }
 
-    // Tap on frame area toggles drawer
     document.getElementById("frame").addEventListener("click", function (e) {
         if (e.target && e.target.closest && e.target.closest("#drawer")) return;
         if (e.target && e.target.closest && e.target.closest("#video-bar")) return;
         if (e.target && e.target.closest && e.target.closest("#settings-panel")) return;
+        if (e.target && e.target.closest && e.target.closest("#thumb-strip")) return;
         toggleDrawer();
     });
 
-    // Drawer button handlers
     drawer.addEventListener("click", function (e) {
         e.stopPropagation();
         var btn = e.target;
@@ -473,10 +515,12 @@
     // --- Settings panel ---
     function openSettings() {
         if (settingsPanel) settingsPanel.className = "open";
-        // Close the drawer
         drawer.className = "";
+        hideThumbs();
         if (drawerTimer) { clearTimeout(drawerTimer); drawerTimer = null; }
         highlightCurrentSettings();
+        updateBrightnessDisplay();
+        updateDebugInfo();
     }
 
     function closeSettings() {
@@ -485,7 +529,6 @@
 
     function highlightCurrentSettings() {
         var i, val, btns;
-        // Interval
         btns = document.getElementById("interval-options");
         if (btns) {
             var iBtns = btns.getElementsByTagName("button");
@@ -495,7 +538,6 @@
                     ? "settings-opt active" : "settings-opt";
             }
         }
-        // Fade
         btns = document.getElementById("fade-options");
         if (btns) {
             var fBtns = btns.getElementsByTagName("button");
@@ -507,7 +549,54 @@
         }
     }
 
-    // Settings: interval options
+    function updateBrightnessDisplay() {
+        var el = document.getElementById("bright-value");
+        if (!el) return;
+        var pct = 80;
+        if (window.Kiosk && window.Kiosk.getBrightness) {
+            try { pct = Math.round(window.Kiosk.getBrightness() * 100); }
+            catch (e) {}
+        }
+        el.textContent = pct + "%";
+    }
+
+    function formatUptime(totalSec) {
+        var d = Math.floor(totalSec / 86400);
+        var h = Math.floor((totalSec % 86400) / 3600);
+        var m = Math.floor((totalSec % 3600) / 60);
+        var parts = [];
+        if (d > 0) parts.push(d + "d");
+        if (h > 0) parts.push(h + "h");
+        parts.push(m + "m");
+        return parts.join(" ");
+    }
+
+    function updateDebugInfo() {
+        var el = document.getElementById("debug-info");
+        if (!el) return;
+        var lines = [];
+        lines.push("Photos: " + photos.length);
+        if (currentItem) lines.push("Current: " + currentItem.filename);
+        lines.push("Interval: " + (intervalMs / 1000) + "s | Fade: " + fadeMs + "ms");
+        lines.push("Paused: " + (paused ? "yes" : "no"));
+
+        if (window.Kiosk && window.Kiosk.getDeviceInfo) {
+            try {
+                var info = JSON.parse(window.Kiosk.getDeviceInfo());
+                lines.push("Android " + info.android + " (SDK " + info.sdk + ")");
+                lines.push("Model: " + info.model);
+                if (info.storageFree !== undefined) {
+                    lines.push("Storage: " + info.storageFree + " MB free / " + info.storageTotal + " MB");
+                }
+                if (info.uptime) {
+                    lines.push("Uptime: " + formatUptime(info.uptime));
+                }
+            } catch (e) {}
+        }
+        el.innerHTML = lines.join("<br>");
+    }
+
+    // Settings: interval
     (function () {
         var el = document.getElementById("interval-options");
         if (!el) return;
@@ -522,7 +611,7 @@
         });
     })();
 
-    // Settings: fade options
+    // Settings: fade
     (function () {
         var el = document.getElementById("fade-options");
         if (!el) return;
@@ -536,6 +625,56 @@
         });
     })();
 
+    // Settings: brightness
+    (function () {
+        var up = document.getElementById("bright-up");
+        var dn = document.getElementById("bright-down");
+        if (up) {
+            up.addEventListener("click", function (e) {
+                e.stopPropagation();
+                if (window.Kiosk) window.Kiosk.brightnessUp();
+                updateBrightnessDisplay();
+            });
+        }
+        if (dn) {
+            dn.addEventListener("click", function (e) {
+                e.stopPropagation();
+                if (window.Kiosk) window.Kiosk.brightnessDown();
+                updateBrightnessDisplay();
+            });
+        }
+    })();
+
+    // Settings: system buttons
+    (function () {
+        var wifi = document.getElementById("sys-wifi");
+        var reboot = document.getElementById("sys-reboot");
+        var power = document.getElementById("sys-power");
+
+        if (wifi) {
+            wifi.addEventListener("click", function (e) {
+                e.stopPropagation();
+                if (window.Kiosk && window.Kiosk.openWifiSettings) {
+                    window.Kiosk.openWifiSettings();
+                }
+            });
+        }
+        if (reboot) {
+            reboot.addEventListener("click", function (e) {
+                e.stopPropagation();
+                if (window.Kiosk && window.Kiosk.reboot) {
+                    window.Kiosk.reboot();
+                }
+            });
+        }
+        if (power) {
+            power.addEventListener("click", function (e) {
+                e.stopPropagation();
+                if (window.Kiosk) window.Kiosk.shutdown();
+            });
+        }
+    })();
+
     // Settings: close
     (function () {
         var el = document.getElementById("settings-close");
@@ -545,7 +684,6 @@
                 closeSettings();
             });
         }
-        // Tap outside content to close
         if (settingsPanel) {
             settingsPanel.addEventListener("click", function (e) {
                 if (e.target === settingsPanel) closeSettings();

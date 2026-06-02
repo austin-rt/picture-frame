@@ -25,6 +25,10 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
+import android.provider.Settings;
+import android.os.StatFs;
+import android.os.Environment;
+import android.os.SystemClock;
 
 public class KioskActivity extends Activity {
 
@@ -192,6 +196,53 @@ public class KioskActivity extends Activity {
         }
 
         @JavascriptInterface
+        public void reboot() {
+            try {
+                Runtime.getRuntime().exec(new String[]{"su", "-c", "reboot"});
+            } catch (IOException ignored) {}
+        }
+
+        @JavascriptInterface
+        public void openWifiSettings() {
+            runOnUiThread(new Runnable() {
+                @Override
+                public void run() {
+                    try {
+                        Intent wifi = new Intent(Settings.ACTION_WIFI_SETTINGS);
+                        wifi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                        startActivity(wifi);
+                        // Auto-return to kiosk after 60s
+                        handler.postDelayed(new Runnable() {
+                            @Override
+                            public void run() {
+                                bringToFront();
+                            }
+                        }, 60000);
+                    } catch (Exception ignored) {}
+                }
+            });
+        }
+
+        @JavascriptInterface
+        public String getDeviceInfo() {
+            StringBuilder sb = new StringBuilder();
+            sb.append("{");
+            sb.append("\"android\":\"").append(android.os.Build.VERSION.RELEASE).append("\",");
+            sb.append("\"model\":\"").append(android.os.Build.MODEL).append("\",");
+            sb.append("\"sdk\":").append(android.os.Build.VERSION.SDK_INT).append(",");
+            try {
+                StatFs stat = new StatFs(Environment.getDataDirectory().getPath());
+                long free = stat.getAvailableBlocksLong() * stat.getBlockSizeLong();
+                long total = stat.getBlockCountLong() * stat.getBlockSizeLong();
+                sb.append("\"storageFree\":").append(free / (1024 * 1024)).append(",");
+                sb.append("\"storageTotal\":").append(total / (1024 * 1024)).append(",");
+            } catch (Exception e) {}
+            sb.append("\"uptime\":").append(android.os.SystemClock.elapsedRealtime() / 1000);
+            sb.append("}");
+            return sb.toString();
+        }
+
+        @JavascriptInterface
         public void lockItem(String filename) {
             updateLockedFile(filename, true);
         }
@@ -299,6 +350,16 @@ public class KioskActivity extends Activity {
                 }
             }
         }, 5000);
+    }
+
+    private void bringToFront() {
+        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
+        if (am != null) {
+            List<ActivityManager.AppTask> tasks = am.getAppTasks();
+            if (tasks != null && !tasks.isEmpty()) {
+                tasks.get(0).moveToFront();
+            }
+        }
     }
 
     private boolean isTermuxRunning() {
