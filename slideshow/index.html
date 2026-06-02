@@ -21,41 +21,78 @@
     <div id="clock"></div>
     <div id="drawer">
         <button class="drawer-btn" id="btn-fav">
-            <svg viewBox="0 0 24 24" width="26" height="26">
+            <svg viewBox="0 0 24 24" width="48" height="48">
                 <path id="fav-path" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="none" stroke="white" stroke-width="2"/>
             </svg>
+            <span class="btn-label">Fav</span>
         </button>
         <button class="drawer-btn" id="btn-prev">
-            <svg viewBox="0 0 24 24" width="26" height="26">
-                <path d="M15.41 7.41L14 6l-6 6 6 6 1.41-1.41L10.83 12z" fill="white"/>
+            <svg viewBox="0 0 24 24" width="48" height="48">
+                <path d="M6 6h2v12H6zm3.5 6l8.5 6V6z" fill="white" transform="scale(-1,1) translate(-24,0)"/>
             </svg>
+            <span class="btn-label">Prev</span>
         </button>
         <button class="drawer-btn" id="btn-pause">
-            <svg viewBox="0 0 24 24" width="26" height="26">
+            <svg viewBox="0 0 24 24" width="48" height="48">
                 <path id="pause-path" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="white"/>
             </svg>
+            <span class="btn-label" id="pause-label">Pause</span>
         </button>
         <button class="drawer-btn" id="btn-next">
-            <svg viewBox="0 0 24 24" width="26" height="26">
-                <path d="M10 6L8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6z" fill="white"/>
+            <svg viewBox="0 0 24 24" width="48" height="48">
+                <path d="M6 18l8.5-6L6 6v12zm10-12v12h2V6h-2z" fill="white"/>
             </svg>
+            <span class="btn-label">Next</span>
         </button>
         <button class="drawer-btn" id="btn-bright-up">
-            <svg viewBox="0 0 24 24" width="26" height="26">
+            <svg viewBox="0 0 24 24" width="48" height="48">
                 <circle cx="12" cy="12" r="4" fill="none" stroke="white" stroke-width="2"/>
                 <path d="M12 2v3M12 19v3M4.22 4.22l2.12 2.12M17.66 17.66l2.12 2.12M2 12h3M19 12h3M4.22 19.78l2.12-2.12M17.66 6.34l2.12-2.12" stroke="white" stroke-width="2" stroke-linecap="round"/>
             </svg>
+            <span class="btn-label">Bright</span>
         </button>
         <button class="drawer-btn" id="btn-bright-down">
-            <svg viewBox="0 0 24 24" width="26" height="26">
+            <svg viewBox="0 0 24 24" width="48" height="48">
                 <circle cx="12" cy="12" r="4" fill="none" stroke="white" stroke-width="2"/>
+                <path d="M12 5v2M12 17v2M6.34 6.34l1.41 1.41M16.24 16.24l1.41 1.41M5 12h2M17 12h2M6.34 17.66l1.41-1.41M16.24 7.76l1.41-1.41" stroke="white" stroke-width="1.5" stroke-linecap="round" opacity="0.5"/>
             </svg>
+            <span class="btn-label">Dim</span>
+        </button>
+        <button class="drawer-btn" id="btn-settings">
+            <svg viewBox="0 0 24 24" width="48" height="48">
+                <path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.07.62-.07.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-2 0-3.6-1.6-3.6-3.6s1.6-3.6 3.6-3.6 3.6 1.6 3.6 3.6-1.6 3.6-3.6 3.6z" fill="white"/>
+            </svg>
+            <span class="btn-label">Settings</span>
         </button>
         <button class="drawer-btn drawer-btn-danger" id="btn-power">
-            <svg viewBox="0 0 24 24" width="26" height="26">
+            <svg viewBox="0 0 24 24" width="48" height="48">
                 <path d="M13 3h-2v10h2V3zm4.83 2.17l-1.42 1.42C18.18 7.84 19 9.81 19 12c0 3.87-3.13 7-7 7s-7-3.13-7-7c0-2.19.82-4.16 2.17-5.66L5.76 4.92A8.95 8.95 0 0 0 3 12a9 9 0 0 0 18 0c0-2.74-1.23-5.18-3.17-6.83z" fill="white"/>
             </svg>
+            <span class="btn-label">Power</span>
         </button>
+    </div>
+    <div id="settings-panel">
+        <div id="settings-content">
+            <div class="settings-title">Settings</div>
+            <div class="settings-group">
+                <div class="settings-label">Slide Interval</div>
+                <div class="settings-row" id="interval-options">
+                    <button class="settings-opt" data-val="15">15s</button>
+                    <button class="settings-opt" data-val="30">30s</button>
+                    <button class="settings-opt" data-val="60">1m</button>
+                    <button class="settings-opt" data-val="120">2m</button>
+                </div>
+            </div>
+            <div class="settings-group">
+                <div class="settings-label">Transition Speed</div>
+                <div class="settings-row" id="fade-options">
+                    <button class="settings-opt" data-val="500">Fast</button>
+                    <button class="settings-opt" data-val="1500">Normal</button>
+                    <button class="settings-opt" data-val="3000">Slow</button>
+                </div>
+            </div>
+            <button class="settings-close" id="settings-close">Close</button>
+        </div>
     </div>
     <script src="app.js"></script>
 </body>

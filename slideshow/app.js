@@ -21,6 +21,9 @@
     var videoBarFill = document.getElementById("video-bar-fill");
     var videoTimeEl = document.getElementById("video-time");
 
+    var settingsPanel = document.getElementById("settings-panel");
+    var pauseLabel = document.getElementById("pause-label");
+
     var photos = [];
     var queue = [];
     var front = imgA;
@@ -302,13 +305,23 @@
     }
 
     function applyConfig(cfg) {
+        // Priority: query params > localStorage > config.json > defaults
+        var savedInterval = null;
+        var savedFade = null;
+        try {
+            savedInterval = localStorage.getItem("pf_interval");
+            savedFade = localStorage.getItem("pf_fade");
+        } catch (e) {}
+
         var newInterval = ("interval" in params)
             ? parseInt(params["interval"], 10)
+            : savedInterval ? parseInt(savedInterval, 10)
             : (cfg.interval || DEFAULTS.interval);
         intervalMs = newInterval * 1000;
 
         fadeMs = ("fade" in params)
             ? parseInt(params["fade"], 10)
+            : savedFade ? parseInt(savedFade, 10)
             : (cfg.fadeDuration || DEFAULTS.fadeDuration);
 
         if (slideTimer) clearInterval(slideTimer);
@@ -361,15 +374,18 @@
     function updateFavIcon() {
         if (!currentItem || !favPath) return;
         if (isFav(currentItem.filename)) {
-            favPath.setAttribute("fill", "white");
+            favPath.setAttribute("fill", "#ff4444");
+            favPath.setAttribute("stroke", "#ff4444");
         } else {
             favPath.setAttribute("fill", "none");
+            favPath.setAttribute("stroke", "white");
         }
     }
 
     function updatePauseIcon() {
         if (!pausePath) return;
         pausePath.setAttribute("d", paused ? PLAY_D : PAUSE_D);
+        if (pauseLabel) pauseLabel.textContent = paused ? "Play" : "Pause";
     }
 
     function toggleDrawer() {
@@ -403,6 +419,7 @@
     document.getElementById("frame").addEventListener("click", function (e) {
         if (e.target && e.target.closest && e.target.closest("#drawer")) return;
         if (e.target && e.target.closest && e.target.closest("#video-bar")) return;
+        if (e.target && e.target.closest && e.target.closest("#settings-panel")) return;
         toggleDrawer();
     });
 
@@ -444,11 +461,97 @@
             case "btn-bright-down":
                 if (window.Kiosk) window.Kiosk.brightnessDown();
                 break;
+            case "btn-settings":
+                openSettings();
+                break;
             case "btn-power":
                 if (window.Kiosk) window.Kiosk.shutdown();
                 break;
         }
     });
+
+    // --- Settings panel ---
+    function openSettings() {
+        if (settingsPanel) settingsPanel.className = "open";
+        // Close the drawer
+        drawer.className = "";
+        if (drawerTimer) { clearTimeout(drawerTimer); drawerTimer = null; }
+        highlightCurrentSettings();
+    }
+
+    function closeSettings() {
+        if (settingsPanel) settingsPanel.className = "";
+    }
+
+    function highlightCurrentSettings() {
+        var i, val, btns;
+        // Interval
+        btns = document.getElementById("interval-options");
+        if (btns) {
+            var iBtns = btns.getElementsByTagName("button");
+            for (i = 0; i < iBtns.length; i++) {
+                val = parseInt(iBtns[i].getAttribute("data-val"), 10);
+                iBtns[i].className = (val * 1000 === intervalMs)
+                    ? "settings-opt active" : "settings-opt";
+            }
+        }
+        // Fade
+        btns = document.getElementById("fade-options");
+        if (btns) {
+            var fBtns = btns.getElementsByTagName("button");
+            for (i = 0; i < fBtns.length; i++) {
+                val = parseInt(fBtns[i].getAttribute("data-val"), 10);
+                fBtns[i].className = (val === fadeMs)
+                    ? "settings-opt active" : "settings-opt";
+            }
+        }
+    }
+
+    // Settings: interval options
+    (function () {
+        var el = document.getElementById("interval-options");
+        if (!el) return;
+        el.addEventListener("click", function (e) {
+            var btn = e.target;
+            if (!btn.getAttribute || !btn.getAttribute("data-val")) return;
+            var val = parseInt(btn.getAttribute("data-val"), 10);
+            intervalMs = val * 1000;
+            resetTimer();
+            highlightCurrentSettings();
+            try { localStorage.setItem("pf_interval", val); } catch (ex) {}
+        });
+    })();
+
+    // Settings: fade options
+    (function () {
+        var el = document.getElementById("fade-options");
+        if (!el) return;
+        el.addEventListener("click", function (e) {
+            var btn = e.target;
+            if (!btn.getAttribute || !btn.getAttribute("data-val")) return;
+            var val = parseInt(btn.getAttribute("data-val"), 10);
+            fadeMs = val;
+            highlightCurrentSettings();
+            try { localStorage.setItem("pf_fade", val); } catch (ex) {}
+        });
+    })();
+
+    // Settings: close
+    (function () {
+        var el = document.getElementById("settings-close");
+        if (el) {
+            el.addEventListener("click", function (e) {
+                e.stopPropagation();
+                closeSettings();
+            });
+        }
+        // Tap outside content to close
+        if (settingsPanel) {
+            settingsPanel.addEventListener("click", function (e) {
+                if (e.target === settingsPanel) closeSettings();
+            });
+        }
+    })();
 
     // --- Init ---
     loadConfig();

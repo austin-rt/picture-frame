@@ -243,8 +243,8 @@ public class KioskActivity extends Activity {
 
     private String countdownHtml(int seconds, String message) {
         return "<html><body style='background:#000;color:#fff;font-family:sans-serif;"
-            + "display:flex;align-items:center;justify-content:center;height:100vh;"
-            + "margin:0'>"
+            + "display:flex;flex-direction:column;align-items:center;"
+            + "justify-content:center;height:100vh;margin:0'>"
             + "<div style='text-align:center;position:relative;width:120px;height:120px'>"
             + "<svg width='120' height='120' style='transform:rotate(-90deg)'>"
             + "<circle cx='60' cy='60' r='54' fill='none' stroke='#222' stroke-width='6'/>"
@@ -256,8 +256,8 @@ public class KioskActivity extends Activity {
             + "display:flex;align-items:center;justify-content:center;"
             + "font-size:36px;font-weight:300' id='n'>" + seconds + "</div>"
             + "</div>"
-            + "<div style='color:#666;font-size:16px;margin-top:24px;position:absolute;"
-            + "bottom:40px'>" + message + "</div>"
+            + "<div style='color:#666;font-size:36px;font-weight:300;"
+            + "margin-top:24px'>" + message + "</div>"
             + "<script>var t=" + seconds + ",n=t,r=document.getElementById('ring'),"
             + "e=document.getElementById('n'),d=339.292;"
             + "setInterval(function(){n-=0.05;if(n<0)n=0;"
@@ -280,6 +280,10 @@ public class KioskActivity extends Activity {
     }
 
     private void startTermuxDelayed() {
+        // Termux:Boot starts services automatically on boot.
+        // Previously launched TermuxActivity here as a safety net, but it
+        // caused a visible flash during the countdown.  Stress testing
+        // confirmed Termux:Boot is reliable, so we just poke the service.
         if (termuxStarted) return;
         termuxStarted = true;
 
@@ -287,32 +291,14 @@ public class KioskActivity extends Activity {
             @Override
             public void run() {
                 if (!isTermuxRunning()) {
-                    Intent termux = new Intent();
-                    termux.setClassName("com.termux", "com.termux.app.TermuxActivity");
-                    termux.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                     try {
-                        startActivity(termux);
+                        Runtime.getRuntime().exec(new String[]{
+                            "am", "startservice", "com.termux/.app.TermuxService"
+                        });
                     } catch (Exception ignored) {}
-
-                    new Handler().postDelayed(new Runnable() {
-                        @Override
-                        public void run() {
-                            moveTaskToFront();
-                        }
-                    }, 3000);
                 }
             }
         }, 5000);
-    }
-
-    private void moveTaskToFront() {
-        ActivityManager am = (ActivityManager) getSystemService(Context.ACTIVITY_SERVICE);
-        if (am != null) {
-            List<ActivityManager.AppTask> tasks = am.getAppTasks();
-            if (tasks != null && !tasks.isEmpty()) {
-                tasks.get(0).moveToFront();
-            }
-        }
     }
 
     private boolean isTermuxRunning() {

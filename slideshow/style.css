@@ -44,17 +44,18 @@ html, body {
     bottom: 20px;
     right: 24px;
     font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
-    font-size: 18px;
+    font-size: 72px;
     font-weight: 300;
     color: rgba(255, 255, 255, 0.7);
-    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    text-shadow: 0 2px 8px rgba(0, 0, 0, 0.8);
     z-index: 10;
     pointer-events: none;
 }
 
+/* --- Drawer --- */
 #drawer {
     position: fixed;
-    right: -68px;
+    right: -110px;
     top: 50%;
     -webkit-transform: translateY(-50%);
     transform: translateY(-50%);
@@ -62,10 +63,9 @@ html, body {
     display: flex;
     -webkit-flex-direction: column;
     flex-direction: column;
-    gap: 6px;
-    padding: 10px 8px;
+    padding: 14px 12px;
     background: rgba(0, 0, 0, 0.65);
-    border-radius: 12px 0 0 12px;
+    border-radius: 20px 0 0 20px;
     z-index: 100;
     -webkit-transition: right 0.25s ease;
     transition: right 0.25s ease;
@@ -78,20 +78,29 @@ html, body {
 }
 
 .drawer-btn {
-    width: 44px;
-    height: 44px;
+    width: 80px;
+    height: 80px;
     border: none;
     background: rgba(255, 255, 255, 0.08);
     border-radius: 50%;
     display: -webkit-flex;
     display: flex;
+    -webkit-flex-direction: column;
+    flex-direction: column;
     -webkit-align-items: center;
     align-items: center;
     -webkit-justify-content: center;
     justify-content: center;
     padding: 0;
+    margin-bottom: 8px;
+    position: relative;
+    overflow: visible;
     -webkit-tap-highlight-color: transparent;
     outline: none;
+}
+
+.drawer-btn:last-child {
+    margin-bottom: 0;
 }
 
 .drawer-btn:active {
@@ -102,6 +111,20 @@ html, body {
     background: rgba(255, 80, 80, 0.4);
 }
 
+.btn-label {
+    position: absolute;
+    bottom: -13px;
+    left: 0;
+    right: 0;
+    text-align: center;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 10px;
+    font-weight: 400;
+    color: rgba(255, 255, 255, 0.5);
+    pointer-events: none;
+}
+
+/* --- Video bar --- */
 #video-bar {
     position: fixed;
     bottom: 0;
@@ -151,4 +174,106 @@ html, body {
 
 #video-bar.active #video-time {
     opacity: 1;
+}
+
+/* --- Settings panel --- */
+#settings-panel {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.85);
+    z-index: 200;
+    display: none;
+}
+
+#settings-panel.open {
+    display: -webkit-flex;
+    display: flex;
+    -webkit-align-items: center;
+    align-items: center;
+    -webkit-justify-content: center;
+    justify-content: center;
+}
+
+#settings-content {
+    background: #1a1a1a;
+    border-radius: 16px;
+    padding: 32px 40px;
+    min-width: 360px;
+    max-width: 90%;
+}
+
+.settings-title {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 28px;
+    font-weight: 300;
+    color: #fff;
+    margin-bottom: 28px;
+    text-align: center;
+}
+
+.settings-group {
+    margin-bottom: 24px;
+}
+
+.settings-label {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    color: #888;
+    margin-bottom: 10px;
+}
+
+.settings-row {
+    display: -webkit-flex;
+    display: flex;
+}
+
+.settings-opt {
+    -webkit-flex: 1;
+    flex: 1;
+    padding: 12px 8px;
+    margin-right: 8px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: transparent;
+    color: #aaa;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 16px;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+.settings-opt:last-child {
+    margin-right: 0;
+}
+
+.settings-opt.active {
+    border-color: #fff;
+    color: #fff;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.settings-opt:active {
+    background: rgba(255, 255, 255, 0.15);
+}
+
+.settings-close {
+    display: block;
+    width: 100%;
+    margin-top: 28px;
+    padding: 14px;
+    border: none;
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.1);
+    color: #fff;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+.settings-close:active {
+    background: rgba(255, 255, 255, 0.2);
 }
