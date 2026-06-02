@@ -189,7 +189,7 @@ sync_once() {
                 local rname="${rbase%.*}"
                 # Only delete if successfully processed
                 if ls "$PHOTOS_DIR"/"$rname".* >/dev/null 2>&1; then
-                    if rclone delete --config "$RCLONE_CONF" "$remote/$rbase" 2>>"$LOG_FILE"; then
+                    if rclone deletefile --config "$RCLONE_CONF" "$remote/$rbase" 2>>"$LOG_FILE"; then
                         log "Deleted from remote: $rbase"
                         rm "$f"
                     fi
