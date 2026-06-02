@@ -71,7 +71,7 @@ public class KioskActivity extends Activity {
         WebSettings settings = webView.getSettings();
         settings.setJavaScriptEnabled(true);
         settings.setDomStorageEnabled(true);
-        settings.setCacheMode(WebSettings.LOAD_NO_CACHE);
+        settings.setCacheMode(WebSettings.LOAD_DEFAULT);
         settings.setMediaPlaybackRequiresUserGesture(false);
         settings.setSupportZoom(false);
         settings.setBuiltInZoomControls(false);
@@ -211,13 +211,13 @@ public class KioskActivity extends Activity {
                         Intent wifi = new Intent(Settings.ACTION_WIFI_SETTINGS);
                         wifi.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
                         startActivity(wifi);
-                        // Auto-return to kiosk after 60s
+                        // Auto-return to kiosk after 30s (no back button in kiosk mode)
                         handler.postDelayed(new Runnable() {
                             @Override
                             public void run() {
                                 bringToFront();
                             }
-                        }, 60000);
+                        }, 30000);
                     } catch (Exception ignored) {}
                 }
             });

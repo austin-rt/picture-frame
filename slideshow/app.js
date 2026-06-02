@@ -384,16 +384,25 @@
     function populateThumbs() {
         if (!thumbStrip) return;
         thumbStrip.innerHTML = "";
-        var count = Math.min(history.length, 20);
-        for (var i = 0; i < count; i++) {
-            var item = history[i];
+        var activeEl = null;
+        for (var i = 0; i < photos.length; i++) {
+            var item = photos[i];
             var el = document.createElement("div");
-            el.className = "thumb" + (item === currentItem ? " active" : "");
+            var isActive = currentItem && item.filename === currentItem.filename;
+            el.className = "thumb" + (isActive ? " active" : "");
             if (item.type !== "video") {
                 el.style.backgroundImage = "url(" + PHOTO_BASE + item.filename + ")";
             }
-            el.setAttribute("data-idx", String(i));
+            el.setAttribute("data-filename", item.filename);
             thumbStrip.appendChild(el);
+            if (isActive) activeEl = el;
+        }
+        // Scroll current photo into view
+        if (activeEl) {
+            var stripW = thumbStrip.offsetWidth;
+            var elLeft = activeEl.offsetLeft;
+            var elW = activeEl.offsetWidth;
+            thumbStrip.scrollLeft = elLeft - (stripW / 2) + (elW / 2);
         }
     }
 
@@ -411,19 +420,25 @@
         thumbStrip.addEventListener("click", function (e) {
             e.stopPropagation();
             var el = e.target;
-            while (el && el !== thumbStrip && !el.getAttribute("data-idx")) {
+            while (el && el !== thumbStrip && !el.getAttribute("data-filename")) {
                 el = el.parentNode;
             }
             if (!el || el === thumbStrip) return;
-            var idx = parseInt(el.getAttribute("data-idx"), 10);
-            if (idx >= 0 && idx < history.length) {
-                histIdx = idx;
-                currentItem = history[histIdx];
-                updateFavIcon();
-                showItem(currentItem, 250, resetTimer);
-                populateThumbs();
-                resetDrawerTimer();
+            var fname = el.getAttribute("data-filename");
+            // Find item in photos array
+            var item = null;
+            for (var i = 0; i < photos.length; i++) {
+                if (photos[i].filename === fname) { item = photos[i]; break; }
             }
+            if (!item) return;
+            currentItem = item;
+            history.unshift(item);
+            if (history.length > 50) history.pop();
+            histIdx = -1;
+            updateFavIcon();
+            showItem(currentItem, 250, resetTimer);
+            populateThumbs();
+            resetDrawerTimer();
         });
     }
 
