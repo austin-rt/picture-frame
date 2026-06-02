@@ -660,6 +660,43 @@
         }
     })();
 
+    // --- Confirm modal ---
+    var confirmModal = document.getElementById("confirm-modal");
+    var confirmMsg = document.getElementById("confirm-msg");
+    var confirmOk = document.getElementById("confirm-ok");
+    var confirmCancel = document.getElementById("confirm-cancel");
+    var confirmCallback = null;
+
+    function showConfirm(msg, onConfirm) {
+        if (confirmMsg) confirmMsg.textContent = msg;
+        confirmCallback = onConfirm;
+        if (confirmModal) confirmModal.className = "open";
+    }
+
+    function hideConfirm() {
+        if (confirmModal) confirmModal.className = "";
+        confirmCallback = null;
+    }
+
+    if (confirmOk) {
+        confirmOk.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (confirmCallback) confirmCallback();
+            hideConfirm();
+        });
+    }
+    if (confirmCancel) {
+        confirmCancel.addEventListener("click", function (e) {
+            e.stopPropagation();
+            hideConfirm();
+        });
+    }
+    if (confirmModal) {
+        confirmModal.addEventListener("click", function (e) {
+            if (e.target === confirmModal) hideConfirm();
+        });
+    }
+
     // Settings: delete from source toggle
     (function () {
         var btnOff = document.getElementById("del-src-off");
@@ -684,10 +721,15 @@
         });
         btnOn.addEventListener("click", function (e) {
             e.stopPropagation();
-            if (window.Kiosk && window.Kiosk.setDeleteAfterSync) {
-                window.Kiosk.setDeleteAfterSync(true);
-            }
-            updateDeleteToggle();
+            showConfirm(
+                "Photos will be permanently deleted from Google Drive after syncing to the frame. Are you sure?",
+                function () {
+                    if (window.Kiosk && window.Kiosk.setDeleteAfterSync) {
+                        window.Kiosk.setDeleteAfterSync(true);
+                    }
+                    updateDeleteToggle();
+                }
+            );
         });
 
         // Update on settings open

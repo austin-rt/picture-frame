@@ -367,3 +367,42 @@ html, body {
 .settings-close:active {
     background: rgba(255, 255, 255, 0.2);
 }
+
+/* --- Confirm modal --- */
+#confirm-modal {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 0, 0.9);
+    z-index: 300;
+    display: none;
+}
+
+#confirm-modal.open {
+    display: -webkit-flex;
+    display: flex;
+    -webkit-align-items: center;
+    align-items: center;
+    -webkit-justify-content: center;
+    justify-content: center;
+}
+
+#confirm-content {
+    background: #1a1a1a;
+    border-radius: 16px;
+    padding: 28px 36px;
+    min-width: 320px;
+    max-width: 80%;
+    text-align: center;
+}
+
+.confirm-msg {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 18px;
+    font-weight: 300;
+    color: #fff;
+    margin-bottom: 24px;
+    line-height: 1.5;
+}
