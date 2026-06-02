@@ -17,6 +17,10 @@
     var clockEl = document.getElementById("clock");
     var drawer = document.getElementById("drawer");
 
+    var videoBarEl = document.getElementById("video-bar");
+    var videoBarFill = document.getElementById("video-bar-fill");
+    var videoTimeEl = document.getElementById("video-time");
+
     var photos = [];
     var queue = [];
     var front = imgA;
@@ -96,6 +100,7 @@
         videoEl.style.zIndex = 0;
         videoEl.removeAttribute("src");
         videoPlaying = false;
+        hideVideoBar();
     }
 
     function playVideo(item, duration, done) {
@@ -122,6 +127,7 @@
             videoEl.style.opacity = 1;
             videoEl.play();
             videoPlaying = true;
+            showVideoBar();
 
             setTimeout(function () {
                 transitioning = false;
@@ -142,6 +148,51 @@
     }
 
     videoEl.addEventListener("ended", onVideoEnded);
+
+    // --- Video progress bar ---
+    function formatTime(sec) {
+        if (!sec || !isFinite(sec)) return "0:00";
+        var s = Math.floor(sec);
+        var m = Math.floor(s / 60);
+        s = s % 60;
+        return m + ":" + (s < 10 ? "0" : "") + s;
+    }
+
+    function showVideoBar() {
+        if (videoBarEl) videoBarEl.className = "active";
+    }
+
+    function hideVideoBar() {
+        if (videoBarEl) videoBarEl.className = "";
+        if (videoBarFill) videoBarFill.style.width = "0%";
+        if (videoTimeEl) videoTimeEl.textContent = "";
+    }
+
+    videoEl.addEventListener("timeupdate", function () {
+        if (!videoPlaying || !videoBarFill) return;
+        var cur = videoEl.currentTime || 0;
+        var dur = videoEl.duration || 0;
+        if (dur > 0) {
+            videoBarFill.style.width = ((cur / dur) * 100) + "%";
+        }
+        if (videoTimeEl) {
+            videoTimeEl.textContent = formatTime(cur) + " / " + formatTime(dur);
+        }
+    });
+
+    // Tap on progress bar to seek
+    if (videoBarEl) {
+        videoBarEl.addEventListener("click", function (e) {
+            e.stopPropagation();
+            if (!videoPlaying) return;
+            var dur = videoEl.duration || 0;
+            if (dur <= 0) return;
+            var rect = videoBarEl.getBoundingClientRect();
+            var x = e.clientX - rect.left;
+            var pct = x / rect.width;
+            videoEl.currentTime = pct * dur;
+        });
+    }
 
     // --- History (circular) ---
     var history = [];
@@ -351,6 +402,7 @@
     // Tap on frame area toggles drawer
     document.getElementById("frame").addEventListener("click", function (e) {
         if (e.target && e.target.closest && e.target.closest("#drawer")) return;
+        if (e.target && e.target.closest && e.target.closest("#video-bar")) return;
         toggleDrawer();
     });
 

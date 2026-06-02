@@ -101,3 +101,54 @@ html, body {
 .drawer-btn-danger:active {
     background: rgba(255, 80, 80, 0.4);
 }
+
+#video-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 28px;
+    z-index: 50;
+    opacity: 0;
+    -webkit-transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease;
+    pointer-events: none;
+}
+
+#video-bar.active {
+    opacity: 1;
+    pointer-events: auto;
+}
+
+#video-bar-track {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 4px;
+    background: rgba(255, 255, 255, 0.15);
+}
+
+#video-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: rgba(255, 255, 255, 0.7);
+}
+
+#video-time {
+    position: absolute;
+    bottom: 8px;
+    left: 12px;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    font-weight: 300;
+    color: rgba(255, 255, 255, 0.7);
+    text-shadow: 0 1px 4px rgba(0, 0, 0, 0.8);
+    opacity: 0;
+    -webkit-transition: opacity 0.3s ease;
+    transition: opacity 0.3s ease;
+}
+
+#video-bar.active #video-time {
+    opacity: 1;
+}
