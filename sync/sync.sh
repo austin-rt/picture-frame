@@ -69,10 +69,19 @@ mkdir -p "$RAW_DIR" "$PHOTOS_DIR" "$SLIDESHOW_DIR"
 # Symlink photos dir into slideshow dir so the HTML can reference photos/filename.jpg
 ln -sfn "$PHOTOS_DIR" "$SLIDESHOW_DIR/photos"
 
-# If slideshow HTML isn't deployed yet, copy it from the script's sibling directory
-if [[ ! -f "$SLIDESHOW_DIR/index.html" && -d "$SCRIPT_DIR/../slideshow" ]]; then
-    cp "$SCRIPT_DIR/../slideshow/"* "$SLIDESHOW_DIR/" 2>/dev/null || true
-    log "Copied slideshow files to $SLIDESHOW_DIR"
+# Keep the deployed slideshow in step with the checkout. This used to run only
+# when index.html was missing, so any edit to app.js or style.css never reached
+# the frame and the running copy silently drifted. Copy anything newer, and
+# never clobber the generated config/manifest that live in the same directory.
+if [[ -d "$SCRIPT_DIR/../slideshow" ]]; then
+    for src in "$SCRIPT_DIR/../slideshow/"*; do
+        [[ -f "$src" ]] || continue
+        name=$(basename "$src")
+        [[ "$name" == "config.json" || "$name" == "manifest.json" ]] && continue
+        if [[ ! -f "$SLIDESHOW_DIR/$name" || "$src" -nt "$SLIDESHOW_DIR/$name" ]]; then
+            cp "$src" "$SLIDESHOW_DIR/$name" 2>/dev/null && log "Updated slideshow/$name"
+        fi
+    done
 fi
 
 # Write config.json for the slideshow front-end

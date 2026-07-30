@@ -1,0 +1,56 @@
+# Pushes slideshow and sync changes to the frame on merge to main.
+#
+# The frame is an Android device behind NAT, so the runner joins the tailnet
+# with an ephemeral node and reaches it over Tailscale. If the frame happens to
+# be offline the job fails loudly rather than silently skipping — rerun it, or
+# the next push carries the same files.
+name: Deploy to frame
+
+on:
+  push:
+    branches: ['main']
+    paths:
+      - slideshow/**
+      - sync/**
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Join tailnet
+        uses: tailscale/github-action@v3
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Load deploy key
+        run: |
+          mkdir -p ~/.ssh
+          printf '%s\n' "${{ secrets.FRAME_SSH_KEY }}" > ~/.ssh/frame
+          chmod 600 ~/.ssh/frame
+          ssh-keyscan -H "${{ secrets.FRAME_HOST }}" >> ~/.ssh/known_hosts 2>/dev/null || true
+
+      - name: Copy slideshow and sync scripts
+        env:
+          FRAME: root@${{ secrets.FRAME_HOST }}
+          HOME_DIR: /data/data/com.termux/files/home
+        run: |
+          SSH="ssh -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          # scp rather than rsync: the frame's Termux has no rsync.
+          scp -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            sync/*.sh "$FRAME:$HOME_DIR/sync/"
+          scp -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
+            slideshow/app.js slideshow/index.html slideshow/style.css \
+            "$FRAME:$HOME_DIR/frame-data/slideshow/"
+          $SSH "$FRAME" "ls -la $HOME_DIR/frame-data/slideshow/app.js"
+
+      - name: Verify the frame still serves the slideshow
+        env:
+          FRAME: root@${{ secrets.FRAME_HOST }}
+        run: |
+          ssh -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20 "$FRAME" \
+            'curl -sf -o /dev/null -w "%{http_code}\n" http://127.0.0.1:8080/index.html'
