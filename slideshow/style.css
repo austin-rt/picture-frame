@@ -176,6 +176,23 @@ html, body {
     opacity: 1;
 }
 
+.thumb.thumb-video {
+    position: relative;
+    background: #1a1a1a;
+}
+
+.thumb.thumb-video:after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    margin-top: -10px;
+    margin-left: -6px;
+    border-style: solid;
+    border-width: 10px 0 10px 16px;
+    border-color: transparent transparent transparent rgba(255, 255, 255, 0.6);
+}
+
 /* --- Video bar --- */
 #video-bar {
     position: fixed;
@@ -228,48 +245,110 @@ html, body {
     opacity: 1;
 }
 
-/* --- Settings panel --- */
+/* --- Settings drawer --- */
 #settings-panel {
     position: fixed;
     top: 0;
     left: 0;
     width: 100%;
     height: 100%;
-    background: rgba(0, 0, 0, 0.85);
     z-index: 200;
-    display: none;
+    pointer-events: none;
+    background: rgba(0, 0, 0, 0);
+    -webkit-transition: background 0.3s ease;
+    transition: background 0.3s ease;
 }
 
 #settings-panel.open {
+    pointer-events: auto;
+    background: rgba(0, 0, 0, 0.5);
+}
+
+#settings-content {
+    position: absolute;
+    right: 0;
+    top: 0;
+    width: 380px;
+    height: 100%;
+    background: #1a1a1a;
+    padding: 24px 28px;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    -webkit-transform: translateX(100%);
+    transform: translateX(100%);
+    -webkit-transition: -webkit-transform 0.3s ease;
+    transition: transform 0.3s ease;
+}
+
+#settings-panel.open #settings-content {
+    -webkit-transform: translateX(0);
+    transform: translateX(0);
+}
+
+.settings-header {
+    display: -webkit-flex;
+    display: flex;
+    -webkit-align-items: center;
+    align-items: center;
+    -webkit-justify-content: space-between;
+    justify-content: space-between;
+    margin-bottom: 20px;
+}
+
+.settings-title {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 24px;
+    font-weight: 300;
+    color: #fff;
+}
+
+.settings-close-btn {
+    width: 36px;
+    height: 36px;
+    border: none;
+    border-radius: 50%;
+    background: rgba(255, 255, 255, 0.1);
     display: -webkit-flex;
     display: flex;
     -webkit-align-items: center;
     align-items: center;
     -webkit-justify-content: center;
     justify-content: center;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
 }
 
-#settings-content {
-    background: #1a1a1a;
-    border-radius: 16px;
-    padding: 28px 36px;
-    min-width: 380px;
-    max-width: 90%;
-    max-height: 90%;
-    overflow-y: auto;
+.settings-close-btn:active {
+    background: rgba(255, 255, 255, 0.25);
 }
 
-.settings-title {
-    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
-    font-size: 28px;
-    font-weight: 300;
-    color: #fff;
+.settings-section {
     margin-bottom: 24px;
-    text-align: center;
+    padding-bottom: 20px;
+    border-bottom: 1px solid #282828;
+}
+
+.settings-section:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+}
+
+.settings-section-title {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 11px;
+    font-weight: 600;
+    color: #666;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    margin-bottom: 14px;
 }
 
 .settings-group {
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+}
+
+.settings-group:last-child {
+    margin-bottom: 0;
 }
 
 .settings-label {
@@ -282,6 +361,13 @@ html, body {
 .settings-row {
     display: -webkit-flex;
     display: flex;
+}
+
+.settings-row-between {
+    -webkit-align-items: center;
+    align-items: center;
+    -webkit-justify-content: space-between;
+    justify-content: space-between;
 }
 
 .settings-opt {
@@ -330,6 +416,39 @@ html, body {
     margin-right: 8px;
 }
 
+.settings-toggle {
+    padding: 6px 16px;
+    border: 1px solid #333;
+    border-radius: 8px;
+    background: transparent;
+    color: #aaa;
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 14px;
+    -webkit-tap-highlight-color: transparent;
+    outline: none;
+}
+
+.settings-toggle.active {
+    border-color: #4a9;
+    color: #4a9;
+    background: rgba(68, 170, 153, 0.1);
+}
+
+.settings-toggle:active {
+    background: rgba(255, 255, 255, 0.1);
+}
+
+.settings-hidden {
+    display: none;
+}
+
+.settings-status {
+    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
+    font-size: 13px;
+    color: #666;
+    margin-top: 6px;
+}
+
 .settings-danger {
     border-color: #662222;
     color: #cc4444;
@@ -347,25 +466,6 @@ html, body {
     padding: 8px;
     background: #111;
     border-radius: 6px;
-}
-
-.settings-close {
-    display: block;
-    width: 100%;
-    margin-top: 24px;
-    padding: 12px;
-    border: none;
-    border-radius: 8px;
-    background: rgba(255, 255, 255, 0.1);
-    color: #fff;
-    font-family: -apple-system, "Helvetica Neue", Arial, sans-serif;
-    font-size: 18px;
-    -webkit-tap-highlight-color: transparent;
-    outline: none;
-}
-
-.settings-close:active {
-    background: rgba(255, 255, 255, 0.2);
 }
 
 /* --- Confirm modal --- */

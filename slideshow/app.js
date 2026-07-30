@@ -37,6 +37,11 @@
     var slideTimer = null;
     var drawerTimer = null;
     var currentItem = null;
+    var screenOff = false;
+    var scheduleTurnedOff = false;
+    var sleepTimerEnd = 0;
+    var wakeTimeout = null;
+    var scheduleData = {enabled: false, onHour: 7, onMin: 0, offHour: 22, offMin: 0};
 
     var params = {};
     (function () {
@@ -336,8 +341,8 @@
     window.swipeRight = function () { goBack(); };
 
     // --- Fav / Pause icons ---
-    var favPath = document.getElementById("fav-path");
-    var pausePath = document.getElementById("pause-path");
+    var favPath = document.querySelector(".fav-path");
+    var pausePath = document.querySelector(".pause-path");
     var PLAY_D = "M8 5v14l11-7z";
     var PAUSE_D = "M6 19h4V5H6v14zm8-14v14h4V5h-4z";
 
@@ -390,7 +395,9 @@
             var el = document.createElement("div");
             var isActive = currentItem && item.filename === currentItem.filename;
             el.className = "thumb" + (isActive ? " active" : "");
-            if (item.type !== "video") {
+            if (item.type === "video") {
+                el.className += " thumb-video";
+            } else {
                 el.style.backgroundImage = "url(" + PHOTO_BASE + item.filename + ")";
             }
             el.setAttribute("data-filename", item.filename);
@@ -442,6 +449,213 @@
         });
     }
 
+    // --- Screen on/off ---
+    function turnScreenOff() {
+        if (screenOff) return;
+        screenOff = true;
+        if (window.Kiosk && window.Kiosk.screenOff) {
+            try { window.Kiosk.screenOff(); } catch (e) {}
+        }
+        if (slideTimer) { clearInterval(slideTimer); slideTimer = null; }
+        if (videoPlaying) videoEl.pause();
+    }
+
+    function turnScreenOn() {
+        if (!screenOff) return;
+        screenOff = false;
+        if (window.Kiosk && window.Kiosk.screenOn) {
+            try { window.Kiosk.screenOn(); } catch (e) {}
+        }
+        if (!paused) {
+            if (videoPlaying) videoEl.play();
+            resetTimer();
+        }
+    }
+
+    function wakeTemporarily() {
+        if (wakeTimeout) clearTimeout(wakeTimeout);
+        turnScreenOn();
+        scheduleTurnedOff = false;
+        wakeTimeout = setTimeout(function () {
+            wakeTimeout = null;
+            if (sleepTimerEnd > 0 && sleepTimerEnd <= Date.now()) {
+                turnScreenOff();
+                return;
+            }
+            if (scheduleData.enabled && !isInScheduleWindow()) {
+                scheduleTurnedOff = true;
+                turnScreenOff();
+            }
+        }, 30000);
+    }
+
+    // --- Sleep timer ---
+    function loadSleepTimer() {
+        if (window.Kiosk && window.Kiosk.getSleepTimer) {
+            try {
+                var data = JSON.parse(window.Kiosk.getSleepTimer());
+                if (data && data.end && data.end > Date.now()) {
+                    sleepTimerEnd = data.end;
+                }
+            } catch (e) {}
+        }
+    }
+
+    function saveSleepTimer() {
+        if (window.Kiosk && window.Kiosk.setSleepTimer) {
+            try {
+                window.Kiosk.setSleepTimer(JSON.stringify({end: sleepTimerEnd}));
+            } catch (e) {}
+        }
+    }
+
+    function startSleepTimer(minutes) {
+        if (minutes <= 0) {
+            sleepTimerEnd = 0;
+        } else {
+            sleepTimerEnd = Date.now() + minutes * 60 * 1000;
+        }
+        saveSleepTimer();
+        updateSleepUI();
+    }
+
+    function checkSleepTimer() {
+        if (sleepTimerEnd <= 0) return;
+        var remaining = sleepTimerEnd - Date.now();
+        if (remaining <= 0) {
+            sleepTimerEnd = 0;
+            saveSleepTimer();
+            turnScreenOff();
+        }
+        updateSleepUI();
+    }
+
+    function updateSleepUI() {
+        var statusEl = document.getElementById("sleep-status");
+        if (statusEl) {
+            if (sleepTimerEnd <= 0) {
+                statusEl.textContent = "";
+            } else {
+                var remaining = Math.max(0, sleepTimerEnd - Date.now());
+                var totalMin = Math.ceil(remaining / 60000);
+                var h = Math.floor(totalMin / 60);
+                var m = totalMin % 60;
+                statusEl.textContent = (h > 0 ? h + "h " : "") + m + "m remaining";
+            }
+        }
+        var optEl = document.getElementById("sleep-options");
+        if (optEl) {
+            var btns = optEl.getElementsByTagName("button");
+            for (var i = 0; i < btns.length; i++) {
+                var val = parseInt(btns[i].getAttribute("data-val"), 10);
+                btns[i].className = (sleepTimerEnd <= 0 && val === 0)
+                    ? "settings-opt active" : "settings-opt";
+            }
+        }
+    }
+
+    // --- Schedule ---
+    function loadSchedule() {
+        scheduleData = {enabled: false, onHour: 7, onMin: 0, offHour: 22, offMin: 0};
+        if (window.Kiosk && window.Kiosk.getSchedule) {
+            try {
+                var data = JSON.parse(window.Kiosk.getSchedule());
+                if (data) {
+                    scheduleData.enabled = !!data.enabled;
+                    if (data.onHour !== undefined) scheduleData.onHour = data.onHour;
+                    if (data.onMin !== undefined) scheduleData.onMin = data.onMin;
+                    if (data.offHour !== undefined) scheduleData.offHour = data.offHour;
+                    if (data.offMin !== undefined) scheduleData.offMin = data.offMin;
+                }
+            } catch (e) {}
+        }
+    }
+
+    function saveSchedule() {
+        if (window.Kiosk && window.Kiosk.setSchedule) {
+            try {
+                window.Kiosk.setSchedule(JSON.stringify(scheduleData));
+            } catch (e) {}
+        }
+    }
+
+    function isInScheduleWindow() {
+        var now = new Date();
+        var cur = now.getHours() * 60 + now.getMinutes();
+        var on = scheduleData.onHour * 60 + scheduleData.onMin;
+        var off = scheduleData.offHour * 60 + scheduleData.offMin;
+        if (on <= off) {
+            return cur >= on && cur < off;
+        } else {
+            return cur >= on || cur < off;
+        }
+    }
+
+    function checkSchedule() {
+        if (!scheduleData.enabled) return;
+        if (sleepTimerEnd > 0 && sleepTimerEnd > Date.now()) return;
+        if (wakeTimeout) return;
+        var shouldBeOn = isInScheduleWindow();
+        if (shouldBeOn && screenOff) {
+            scheduleTurnedOff = false;
+            turnScreenOn();
+        } else if (!shouldBeOn && !screenOff) {
+            scheduleTurnedOff = true;
+            turnScreenOff();
+        }
+    }
+
+    function formatTime12(hour, min) {
+        var h = hour % 12 || 12;
+        var ampm = hour >= 12 ? "PM" : "AM";
+        return h + ":" + (min < 10 ? "0" : "") + min + " " + ampm;
+    }
+
+    function adjustTime(which, delta) {
+        var hour, min;
+        if (which === "on") {
+            hour = scheduleData.onHour;
+            min = scheduleData.onMin;
+        } else {
+            hour = scheduleData.offHour;
+            min = scheduleData.offMin;
+        }
+        var total = hour * 60 + min + delta;
+        total = ((total % 1440) + 1440) % 1440;
+        hour = Math.floor(total / 60);
+        min = total % 60;
+        if (which === "on") {
+            scheduleData.onHour = hour;
+            scheduleData.onMin = min;
+        } else {
+            scheduleData.offHour = hour;
+            scheduleData.offMin = min;
+        }
+        saveSchedule();
+        updateScheduleUI();
+    }
+
+    function updateScheduleUI() {
+        var toggle = document.getElementById("sched-toggle");
+        var config = document.getElementById("sched-config");
+        var onTime = document.getElementById("sched-on-time");
+        var offTime = document.getElementById("sched-off-time");
+        if (toggle) {
+            toggle.textContent = scheduleData.enabled ? "On" : "Off";
+            toggle.className = scheduleData.enabled
+                ? "settings-toggle active" : "settings-toggle";
+        }
+        if (config) {
+            config.className = scheduleData.enabled ? "" : "settings-hidden";
+        }
+        if (onTime) {
+            onTime.textContent = formatTime12(scheduleData.onHour, scheduleData.onMin);
+        }
+        if (offTime) {
+            offTime.textContent = formatTime12(scheduleData.offHour, scheduleData.offMin);
+        }
+    }
+
     // --- Drawer ---
     function toggleDrawer() {
         var isOpen = drawer.className.indexOf("open") !== -1;
@@ -474,6 +688,10 @@
     }
 
     document.getElementById("frame").addEventListener("click", function (e) {
+        if (screenOff) {
+            wakeTemporarily();
+            return;
+        }
         if (e.target && e.target.closest && e.target.closest("#drawer")) return;
         if (e.target && e.target.closest && e.target.closest("#video-bar")) return;
         if (e.target && e.target.closest && e.target.closest("#settings-panel")) return;
@@ -536,6 +754,8 @@
         highlightCurrentSettings();
         updateBrightnessDisplay();
         updateDebugInfo();
+        updateSleepUI();
+        updateScheduleUI();
     }
 
     function closeSettings() {
@@ -770,6 +990,56 @@
         }
     })();
 
+    // Settings: sleep timer
+    (function () {
+        var el = document.getElementById("sleep-options");
+        if (!el) return;
+        el.addEventListener("click", function (e) {
+            var btn = e.target;
+            if (!btn.getAttribute || !btn.getAttribute("data-val")) return;
+            e.stopPropagation();
+            var val = parseInt(btn.getAttribute("data-val"), 10);
+            startSleepTimer(val);
+        });
+    })();
+
+    // Settings: schedule
+    (function () {
+        var toggle = document.getElementById("sched-toggle");
+        if (toggle) {
+            toggle.addEventListener("click", function (e) {
+                e.stopPropagation();
+                scheduleData.enabled = !scheduleData.enabled;
+                if (!scheduleData.enabled && scheduleTurnedOff) {
+                    scheduleTurnedOff = false;
+                    if (screenOff) turnScreenOn();
+                }
+                saveSchedule();
+                updateScheduleUI();
+            });
+        }
+        var onDown = document.getElementById("sched-on-down");
+        var onUp = document.getElementById("sched-on-up");
+        var offDown = document.getElementById("sched-off-down");
+        var offUp = document.getElementById("sched-off-up");
+        if (onDown) onDown.addEventListener("click", function (e) {
+            e.stopPropagation();
+            adjustTime("on", -15);
+        });
+        if (onUp) onUp.addEventListener("click", function (e) {
+            e.stopPropagation();
+            adjustTime("on", 15);
+        });
+        if (offDown) offDown.addEventListener("click", function (e) {
+            e.stopPropagation();
+            adjustTime("off", -15);
+        });
+        if (offUp) offUp.addEventListener("click", function (e) {
+            e.stopPropagation();
+            adjustTime("off", 15);
+        });
+    })();
+
     // Settings: close
     (function () {
         var el = document.getElementById("settings-close");
@@ -792,4 +1062,13 @@
     setInterval(loadManifest, DEFAULTS.manifestPoll);
     updateClock();
     setInterval(updateClock, 10000);
+
+    loadSchedule();
+    loadSleepTimer();
+    if (window.Kiosk && window.Kiosk.isScreenOff) {
+        try { screenOff = window.Kiosk.isScreenOff(); } catch (e) {}
+    }
+    setInterval(checkSleepTimer, 10000);
+    setInterval(checkSchedule, 60000);
+    checkSchedule();
 })();

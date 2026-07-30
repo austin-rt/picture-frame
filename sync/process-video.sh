@@ -60,9 +60,10 @@ else
     #   mono 64k   — frame has tiny/no speakers
     ffmpeg -y -i "$INPUT" $T_ARGS \
         -vf "scale='min(${MAX_W},iw)':'min(${MAX_H},ih)':force_original_aspect_ratio=decrease" \
+        -pix_fmt yuv420p \
         -c:v libx264 -profile:v baseline -level 3.1 \
-        -preset veryfast -crf 30 -tune fastdecode \
-        -maxrate 800k -bufsize 1600k \
+        -preset veryfast -crf 23 -tune fastdecode \
+        -maxrate 2000k -bufsize 4000k \
         -r 24 \
         -c:a aac -b:a 64k -ac 1 -ar 22050 \
         -movflags +faststart \

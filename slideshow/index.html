@@ -24,7 +24,7 @@
         <button class="drawer-btn" id="btn-fav">
             <span class="btn-circle">
                 <svg viewBox="0 0 24 24" width="42" height="42">
-                    <path id="fav-path" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="none" stroke="white" stroke-width="2"/>
+                    <path class="fav-path" d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" fill="none" stroke="white" stroke-width="2"/>
                 </svg>
             </span>
             <span class="btn-label">Favorite</span>
@@ -40,7 +40,7 @@
         <button class="drawer-btn" id="btn-pause">
             <span class="btn-circle">
                 <svg viewBox="0 0 24 24" width="42" height="42">
-                    <path id="pause-path" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="white"/>
+                    <path class="pause-path" d="M6 19h4V5H6v14zm8-14v14h4V5h-4z" fill="white"/>
                 </svg>
             </span>
             <span class="btn-label" id="pause-label">Pause</span>
@@ -90,48 +90,111 @@
     </div>
     <div id="settings-panel">
         <div id="settings-content">
-            <div class="settings-title">Settings</div>
-            <div class="settings-group">
-                <div class="settings-label">Slide Interval</div>
-                <div class="settings-row" id="interval-options">
-                    <button class="settings-opt" data-val="15">15s</button>
-                    <button class="settings-opt" data-val="30">30s</button>
-                    <button class="settings-opt" data-val="60">1m</button>
-                    <button class="settings-opt" data-val="120">2m</button>
+            <div class="settings-header">
+                <div class="settings-title">Settings</div>
+                <button class="settings-close-btn" id="settings-close">
+                    <svg viewBox="0 0 24 24" width="20" height="20">
+                        <path d="M18 6L6 18M6 6l12 12" stroke="white" stroke-width="2.5" stroke-linecap="round"/>
+                    </svg>
+                </button>
+            </div>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Display</div>
+                <div class="settings-group">
+                    <div class="settings-label">Brightness</div>
+                    <div class="settings-row">
+                        <button class="settings-opt" id="bright-down">&minus;</button>
+                        <div class="settings-val" id="bright-value">80%</div>
+                        <button class="settings-opt" id="bright-up">&plus;</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-label">Sleep Timer</div>
+                    <div class="settings-row" id="sleep-options">
+                        <button class="settings-opt" data-val="0">Off</button>
+                        <button class="settings-opt" data-val="15">15m</button>
+                        <button class="settings-opt" data-val="30">30m</button>
+                        <button class="settings-opt" data-val="60">1h</button>
+                        <button class="settings-opt" data-val="120">2h</button>
+                    </div>
+                    <div class="settings-status" id="sleep-status"></div>
                 </div>
             </div>
-            <div class="settings-group">
-                <div class="settings-label">Transition Speed</div>
-                <div class="settings-row" id="fade-options">
-                    <button class="settings-opt" data-val="500">Fast</button>
-                    <button class="settings-opt" data-val="1500">Normal</button>
-                    <button class="settings-opt" data-val="3000">Slow</button>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Schedule</div>
+                <div class="settings-group">
+                    <div class="settings-row settings-row-between">
+                        <div class="settings-label">Enable Schedule</div>
+                        <button class="settings-toggle" id="sched-toggle">Off</button>
+                    </div>
+                </div>
+                <div id="sched-config" class="settings-hidden">
+                    <div class="settings-group">
+                        <div class="settings-label">Turn On</div>
+                        <div class="settings-row">
+                            <button class="settings-opt" id="sched-on-down">&#9664;</button>
+                            <div class="settings-val" id="sched-on-time">7:00 AM</div>
+                            <button class="settings-opt" id="sched-on-up">&#9654;</button>
+                        </div>
+                    </div>
+                    <div class="settings-group">
+                        <div class="settings-label">Turn Off</div>
+                        <div class="settings-row">
+                            <button class="settings-opt" id="sched-off-down">&#9664;</button>
+                            <div class="settings-val" id="sched-off-time">10:00 PM</div>
+                            <button class="settings-opt" id="sched-off-up">&#9654;</button>
+                        </div>
+                    </div>
                 </div>
             </div>
-            <div class="settings-group">
-                <div class="settings-label">Brightness</div>
-                <div class="settings-row">
-                    <button class="settings-opt" id="bright-down">&minus;</button>
-                    <div class="settings-val" id="bright-value">80%</div>
-                    <button class="settings-opt" id="bright-up">&plus;</button>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Slideshow</div>
+                <div class="settings-group">
+                    <div class="settings-label">Slide Interval</div>
+                    <div class="settings-row" id="interval-options">
+                        <button class="settings-opt" data-val="15">15s</button>
+                        <button class="settings-opt" data-val="30">30s</button>
+                        <button class="settings-opt" data-val="60">1m</button>
+                        <button class="settings-opt" data-val="120">2m</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-label">Transition Speed</div>
+                    <div class="settings-row" id="fade-options">
+                        <button class="settings-opt" data-val="500">Fast</button>
+                        <button class="settings-opt" data-val="1500">Normal</button>
+                        <button class="settings-opt" data-val="3000">Slow</button>
+                    </div>
                 </div>
             </div>
-            <div class="settings-group">
-                <div class="settings-label">Delete From Source</div>
-                <div class="settings-row">
-                    <button class="settings-opt" id="del-src-off" data-val="false">Off</button>
-                    <button class="settings-opt" id="del-src-on" data-val="true">On</button>
+
+            <div class="settings-section">
+                <div class="settings-section-title">Storage</div>
+                <div class="settings-group">
+                    <div class="settings-label">Delete From Source</div>
+                    <div class="settings-row">
+                        <button class="settings-opt" id="del-src-off" data-val="false">Off</button>
+                        <button class="settings-opt" id="del-src-on" data-val="true">On</button>
+                    </div>
                 </div>
             </div>
-            <div class="settings-group">
-                <div class="settings-label">System</div>
-                <div class="settings-row">
-                    <button class="settings-opt" id="sys-wifi">Wi-Fi</button>
-                    <button class="settings-opt" id="sys-reboot">Reboot</button>
-                    <button class="settings-opt settings-danger" id="sys-power">Power Off</button>
+
+            <div class="settings-section">
+                <div class="settings-section-title">System</div>
+                <div class="settings-group">
+                    <div class="settings-row">
+                        <button class="settings-opt" id="sys-wifi">Wi-Fi</button>
+                        <button class="settings-opt" id="sys-reboot">Reboot</button>
+                        <button class="settings-opt settings-danger" id="sys-power">Power Off</button>
+                    </div>
+                </div>
+                <div class="settings-group">
+                    <div class="settings-debug" id="debug-info"></div>
                 </div>
             </div>
-            <button class="settings-close" id="settings-close">Close</button>
         </div>
     </div>
     <div id="confirm-modal">
