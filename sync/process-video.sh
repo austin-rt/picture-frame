@@ -26,9 +26,45 @@ VIDEO_MAXRATE="${VIDEO_MAXRATE:-6000k}"
 VIDEO_BUFSIZE="${VIDEO_BUFSIZE:-12000k}"
 VIDEO_FPS="${VIDEO_FPS:-24}"
 
+# Is a file a complete, playable video? A failed encode used to leave a
+# truncated .mp4 behind, and because that file was newer than the source it was
+# treated as "already done" forever — the frame then served a video that never
+# decodes. Anything that doesn't probe clean gets rebuilt.
+#
+# Checking the container duration alone is NOT enough: -movflags +faststart puts
+# the moov atom at the front, so a truncated file still reports its original
+# full duration and ffmpeg exits 0 while spewing decode errors. Compare the last
+# video packet's timestamp against the declared duration instead — a file cut
+# short stops delivering packets long before the end.
+is_playable() {
+    local f="$1" dur last
+    [[ -s "$f" ]] || return 1
+    dur=$(ffprobe -v quiet -show_entries format=duration -of csv=p=0 "$f" 2>/dev/null \
+          | head -1 | cut -d',' -f1)
+    [[ -n "$dur" && "${dur%.*}" -ge 0 ]] 2>/dev/null || return 1
+    last=$(ffprobe -v quiet -select_streams v:0 -show_entries packet=pts_time \
+           -of csv=p=0 "$f" 2>/dev/null | tail -1 | cut -d',' -f1)
+    [[ -n "$last" ]] || return 1
+    # Allow 1.5s of slack for the final GOP and container rounding.
+    awk -v d="$dur" -v l="$last" 'BEGIN { exit !(l > 0 && l >= d - 1.5) }'
+}
+
 if [[ -f "$OUTPUT" && "$OUTPUT" -nt "$INPUT" ]]; then
-    exit 0
+    if is_playable "$OUTPUT"; then
+        exit 0
+    fi
+    echo "re-encoding: existing output is corrupt ($(basename "$OUTPUT"))" >&2
+    rm -f "$OUTPUT"
 fi
+
+# Encode to a temp file in the same directory and only publish it on success,
+# so a crash or a kill can never leave a half-written video where the manifest
+# can find it.
+# Deliberately not *.part.mp4 — generate-manifest.sh matches on the .mp4
+# extension and would publish a half-written file.
+TMP="${OUTPUT}.part"
+cleanup() { [[ -n "${TMP:-}" ]] && rm -f "$TMP"; }
+trap cleanup EXIT
 
 # Probe input: codec, resolution, duration
 PROBE=$(ffprobe -v quiet -select_streams v:0 \
@@ -63,7 +99,7 @@ if ! $NEEDS_TRANSCODE; then
         -c:a aac -b:a 64k -ac 1 -ar 22050 \
         -movflags +faststart \
         -map_metadata -1 \
-        "$OUTPUT"
+        -f mp4 "$TMP"
 else
     # Transcode, tuned for a 10" 1280x800 panel with a weak ARM decoder.
     #   fastdecode — helps the weak Rockchip ARM decoder
@@ -80,5 +116,13 @@ else
         -c:a aac -b:a 64k -ac 1 -ar 22050 \
         -movflags +faststart \
         -map_metadata -1 \
-        "$OUTPUT"
+        -f mp4 "$TMP"
 fi
+
+# Only a file that probes clean gets published under the real name.
+if ! is_playable "$TMP"; then
+    echo "encode produced an unplayable file: $(basename "$OUTPUT")" >&2
+    exit 1
+fi
+mv -f "$TMP" "$OUTPUT"
+TMP=""

@@ -147,6 +147,11 @@
         hideVideoBar();
     }
 
+    // A video that never decodes fires no `canplay`, so without these guards the
+    // slideshow sits on it forever: `done` never runs and `transitioning` stays
+    // true, which makes advance() a no-op. Any failure skips to the next item.
+    var VIDEO_READY_TIMEOUT_MS = 10000;
+
     function playVideo(item, duration, done) {
         var ms = duration || fadeMs;
         var url = PHOTO_BASE + item.filename;
@@ -157,18 +162,40 @@
         videoEl.src = url;
         videoEl.load();
 
-        var started = false;
-        var onReady = function () {
-            if (started) return;
-            started = true;
+        var settled = false;
+        var readyTimer = null;
+
+        var cleanup = function () {
             videoEl.removeEventListener("canplay", onReady);
+            videoEl.removeEventListener("error", onFail);
+            if (readyTimer) clearTimeout(readyTimer);
+        };
+
+        var onFail = function () {
+            if (settled) return;
+            settled = true;
+            cleanup();
+            console.warn("slideshow: skipping unplayable video", item.filename);
+            stopVideo();
+            transitioning = false;
+            // Move past it rather than stalling; resetTimer keeps the cadence.
+            advance();
+            resetTimer();
+        };
+
+        var onReady = function () {
+            if (settled) return;
+            settled = true;
+            cleanup();
 
             front.style.transition = "opacity " + ms + "ms ease-in-out";
             front.style.opacity = 0;
             videoEl.offsetHeight;
             videoEl.style.transition = "opacity " + ms + "ms ease-in-out";
             videoEl.style.opacity = 1;
-            videoEl.play();
+            var p = videoEl.play();
+            // Autoplay rejection is another silent stall on some Android builds.
+            if (p && typeof p.catch === "function") p.catch(onFail);
             videoPlaying = true;
             showVideoBar();
 
@@ -179,6 +206,8 @@
         };
 
         videoEl.addEventListener("canplay", onReady);
+        videoEl.addEventListener("error", onFail);
+        readyTimer = setTimeout(onFail, VIDEO_READY_TIMEOUT_MS);
         if (videoEl.readyState >= 3) onReady();
     }
 
