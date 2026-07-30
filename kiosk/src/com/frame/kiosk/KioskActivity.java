@@ -429,6 +429,17 @@ public class KioskActivity extends Activity {
         }
 
         @JavascriptInterface
+        public String getPlayOrder() {
+            return rootRead(FRAME_DATA + "play_order").trim();
+        }
+
+        @JavascriptInterface
+        public void setPlayOrder(String order) {
+            rootWrite(FRAME_DATA + "play_order",
+                "sequential".equals(order) ? "sequential" : "shuffle");
+        }
+
+        @JavascriptInterface
         public String getSleepTimer() {
             return readFileContents(FRAME_DATA + "sleep_timer.json");
         }

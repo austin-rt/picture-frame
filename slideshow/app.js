@@ -27,6 +27,7 @@
 
     var photos = [];
     var queue = [];
+    var playOrder = "shuffle";
     var front = imgA;
     var back = imgB;
     var transitioning = false;
@@ -70,12 +71,46 @@
         return a;
     }
 
+    // "shuffle" plays a shuffled bag that refills once empty, so nothing repeats
+    // until everything has been shown. "sequential" walks the manifest, which is
+    // alphabetical by filename with photos and videos interleaved.
+    function refillQueue() {
+        if (playOrder === "sequential") {
+            // nextPhoto() pops off the end, so reverse to play in manifest order.
+            queue = photos.slice().reverse();
+        } else {
+            queue = shuffle(photos);
+        }
+    }
+
     function nextPhoto() {
         if (queue.length === 0) {
             if (photos.length === 0) return null;
-            queue = shuffle(photos);
+            refillQueue();
         }
         return queue.pop();
+    }
+
+    function loadPlayOrder() {
+        var v = "";
+        if (window.Kiosk && window.Kiosk.getPlayOrder) {
+            try { v = window.Kiosk.getPlayOrder() || ""; } catch (e) {}
+        }
+        if (!v) {
+            try { v = localStorage.getItem("playOrder") || ""; } catch (e) {}
+        }
+        playOrder = (v === "sequential") ? "sequential" : "shuffle";
+    }
+
+    function savePlayOrder(v) {
+        playOrder = (v === "sequential") ? "sequential" : "shuffle";
+        if (window.Kiosk && window.Kiosk.setPlayOrder) {
+            try { window.Kiosk.setPlayOrder(playOrder); } catch (e) {}
+        }
+        try { localStorage.setItem("playOrder", playOrder); } catch (e) {}
+        // Drop the current bag so the new order takes effect on the next advance
+        // instead of after the current pass finishes.
+        queue = [];
     }
 
     function crossfade(url, duration, done) {
@@ -917,6 +952,36 @@
         });
     }
 
+    // Settings: play order (shuffle vs manifest order)
+    (function () {
+        var btnShuffle = document.getElementById("order-shuffle");
+        var btnSeq = document.getElementById("order-sequential");
+        if (!btnShuffle || !btnSeq) return;
+
+        function updateOrderToggle() {
+            var seq = playOrder === "sequential";
+            btnShuffle.className = seq ? "settings-opt" : "settings-opt active";
+            btnSeq.className = seq ? "settings-opt active" : "settings-opt";
+        }
+
+        btnShuffle.addEventListener("click", function (e) {
+            e.stopPropagation();
+            savePlayOrder("shuffle");
+            updateOrderToggle();
+        });
+        btnSeq.addEventListener("click", function (e) {
+            e.stopPropagation();
+            savePlayOrder("sequential");
+            updateOrderToggle();
+        });
+
+        var origOpenOrder = openSettings;
+        openSettings = function () {
+            origOpenOrder();
+            updateOrderToggle();
+        };
+    })();
+
     // Settings: delete from source toggle
     (function () {
         var btnOff = document.getElementById("del-src-off");
@@ -1058,6 +1123,7 @@
 
     // --- Init ---
     loadConfig();
+    loadPlayOrder();
     loadManifest();
     setInterval(loadManifest, DEFAULTS.manifestPoll);
     updateClock();
