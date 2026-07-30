@@ -151,28 +151,53 @@ sync_once() {
         return 1
     }
 
-    # Process new/changed files
+    # Process new/changed files: ALL images first, then videos.
+    #
+    # Order matters a lot here. raw/ was previously walked in a single
+    # alphabetical pass, so one video stalled every photo behind it — a 24s
+    # 1080p clip costs ~9 minutes of CPU on this Rockchip (~22x realtime), and
+    # with 5 videos interleaved the frame sat on a handful of photos for the
+    # better part of an hour after a wipe. Images take about a second each, so
+    # doing them first fills the frame almost immediately and lets the slow
+    # video encodes finish in the background.
+    #
+    # Converter stderr is captured: a failure used to log only
+    # "Failed to process: <name>" with no reason, which made a file that failed
+    # every single cycle (IMG_3896.HEIC did, 30 times) impossible to diagnose.
     local processed=0
+
+    process_one() {
+        local f="$1" kind="$2" out="$3" script="$4" base
+        base=$(basename "$f")
+        local err rc
+        err=$(bash "$SCRIPT_DIR/$script" "$f" "$out" 2>&1)
+        rc=$?
+        if (( rc == 0 )); then
+            processed=$((processed + 1))
+        else
+            log "Failed to process $kind: $base (exit $rc)"
+            [[ -n "$err" ]] && log "  reason: $(echo "$err" | tr '\n' ' ' | cut -c1-400)"
+        fi
+    }
+
     for f in "$RAW_DIR"/*; do
         [[ -f "$f" ]] || continue
         base=$(basename "$f")
-        name="${base%.*}"
+        is_image "$base" || continue
+        process_one "$f" image "$PHOTOS_DIR/${base%.*}.jpg" process-image.sh
+    done
 
-        if is_image "$base"; then
-            out="$PHOTOS_DIR/${name}.jpg"
-            if bash "$SCRIPT_DIR/process-image.sh" "$f" "$out"; then
-                processed=$((processed + 1))
-            else
-                log "Failed to process image: $base"
-            fi
-        elif is_video "$base"; then
-            out="$PHOTOS_DIR/${name}.mp4"
-            if bash "$SCRIPT_DIR/process-video.sh" "$f" "$out"; then
-                processed=$((processed + 1))
-            else
-                log "Failed to process video: $base"
-            fi
-        fi
+    # Regenerate the manifest before the slow pass so the photos that just
+    # converted are visible on the frame while videos are still encoding.
+    if (( processed > 0 )); then
+        bash "$SCRIPT_DIR/generate-manifest.sh" "$PHOTOS_DIR" "$MANIFEST" >/dev/null 2>&1 || true
+    fi
+
+    for f in "$RAW_DIR"/*; do
+        [[ -f "$f" ]] || continue
+        base=$(basename "$f")
+        is_video "$base" || continue
+        process_one "$f" video "$PHOTOS_DIR/${base%.*}.mp4" process-video.sh
     done
 
     # Remove processed files whose source no longer exists in raw/

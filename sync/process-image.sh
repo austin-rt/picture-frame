@@ -49,8 +49,8 @@ if [[ -n "$HEX" ]]; then
     fi
 fi
 
-ffmpeg -y -noautorotate -i "$INPUT" \
+ffmpeg -y -hide_banner -loglevel error -noautorotate -i "$INPUT" \
     -vf "${ROTATE_FILTER}scale='min(${MAX_W},iw)':'min(${MAX_H},ih)':force_original_aspect_ratio=decrease" \
     -q:v "$QUALITY" \
     -map_metadata -1 \
-    "$OUTPUT" 2>/dev/null
+    "$OUTPUT"

@@ -12,6 +12,20 @@ MAX_W="${FRAME_WIDTH:-1280}"
 MAX_H="${FRAME_HEIGHT:-800}"
 MAX_DURATION="${MAX_VIDEO_DURATION:-120}"
 
+# Encode quality knobs, overridable from frame.conf so these can be tuned
+# without editing this script.
+#   CRF 19    — visually near-transparent at this size. Was 30, then 23; both
+#               left visible blocking on detailed footage (grass, hair, sand).
+#   maxrate   — the old 2000k ceiling was the real limiter: at 1280x800 a
+#               detailed 24fps scene wants more than that, so the encoder hit
+#               the cap and blocked up regardless of CRF.
+#   fps 24    — kept, along with baseline/fastdecode, because the Rockchip
+#               rk312x decoder in this frame is weak and stutters if pushed.
+VIDEO_CRF="${VIDEO_CRF:-19}"
+VIDEO_MAXRATE="${VIDEO_MAXRATE:-6000k}"
+VIDEO_BUFSIZE="${VIDEO_BUFSIZE:-12000k}"
+VIDEO_FPS="${VIDEO_FPS:-24}"
+
 if [[ -f "$OUTPUT" && "$OUTPUT" -nt "$INPUT" ]]; then
     exit 0
 fi
@@ -44,29 +58,27 @@ fi
 if ! $NEEDS_TRANSCODE; then
     # Already H.264 at frame resolution — remux without re-encoding
     # Still apply duration limit and optimize audio for small speakers
-    ffmpeg -y -i "$INPUT" $T_ARGS \
+    ffmpeg -y -hide_banner -loglevel error -i "$INPUT" $T_ARGS \
         -c:v copy \
         -c:a aac -b:a 64k -ac 1 -ar 22050 \
         -movflags +faststart \
         -map_metadata -1 \
-        "$OUTPUT" 2>/dev/null
+        "$OUTPUT"
 else
-    # Transcode: aggressive compression tuned for 10" frame
-    #   CRF 30     — very compressed but fine at 1280x800 viewing distance
-    #   maxrate    — cap peak bitrate so weak ARM decoder isn't overwhelmed
-    #   24fps      — saves ~20% over 30fps, looks fine for frame content
+    # Transcode, tuned for a 10" 1280x800 panel with a weak ARM decoder.
     #   fastdecode — helps the weak Rockchip ARM decoder
     #   baseline   — widest Android WebView compatibility
     #   mono 64k   — frame has tiny/no speakers
-    ffmpeg -y -i "$INPUT" $T_ARGS \
+    # Quality is set by the VIDEO_* vars above.
+    ffmpeg -y -hide_banner -loglevel error -i "$INPUT" $T_ARGS \
         -vf "scale='min(${MAX_W},iw)':'min(${MAX_H},ih)':force_original_aspect_ratio=decrease" \
         -pix_fmt yuv420p \
         -c:v libx264 -profile:v baseline -level 3.1 \
-        -preset veryfast -crf 23 -tune fastdecode \
-        -maxrate 2000k -bufsize 4000k \
-        -r 24 \
+        -preset veryfast -crf "$VIDEO_CRF" -tune fastdecode \
+        -maxrate "$VIDEO_MAXRATE" -bufsize "$VIDEO_BUFSIZE" \
+        -r "$VIDEO_FPS" \
         -c:a aac -b:a 64k -ac 1 -ar 22050 \
         -movflags +faststart \
         -map_metadata -1 \
-        "$OUTPUT" 2>/dev/null
+        "$OUTPUT"
 fi
