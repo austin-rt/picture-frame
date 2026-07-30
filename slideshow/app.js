@@ -42,7 +42,7 @@
     var scheduleTurnedOff = false;
     var sleepTimerEnd = 0;
     var wakeTimeout = null;
-    var scheduleData = {enabled: false, onHour: 7, onMin: 0, offHour: 22, offMin: 0};
+    var scheduleData = {enabled: true, onHour: 7, onMin: 0, offHour: 22, offMin: 0};
 
     var params = {};
     (function () {
@@ -341,11 +341,22 @@
     }
 
     function applyConfig(cfg) {
+        // Prefer the on-disk copy written through the bridge: localStorage lives
+        // in the WebView and is flushed lazily, so a value set shortly before the
+        // power was cut may not have made it to disk. Fall back to localStorage,
+        // then to config.json (which sync.sh rewrites every cycle from frame.conf,
+        // so it is a default rather than a user preference).
         var savedInterval = null;
         var savedFade = null;
+        if (window.Kiosk && window.Kiosk.getSlideInterval) {
+            try {
+                savedInterval = window.Kiosk.getSlideInterval() || null;
+                savedFade = window.Kiosk.getFadeDuration() || null;
+            } catch (e) {}
+        }
         try {
-            savedInterval = localStorage.getItem("pf_interval");
-            savedFade = localStorage.getItem("pf_fade");
+            if (!savedInterval) savedInterval = localStorage.getItem("pf_interval");
+            if (!savedFade) savedFade = localStorage.getItem("pf_fade");
         } catch (e) {}
 
         var newInterval = ("interval" in params)
@@ -591,12 +602,12 @@
 
     // --- Schedule ---
     function loadSchedule() {
-        scheduleData = {enabled: false, onHour: 7, onMin: 0, offHour: 22, offMin: 0};
+        scheduleData = {enabled: true, onHour: 7, onMin: 0, offHour: 22, offMin: 0};
         if (window.Kiosk && window.Kiosk.getSchedule) {
             try {
                 var data = JSON.parse(window.Kiosk.getSchedule());
                 if (data) {
-                    scheduleData.enabled = !!data.enabled;
+                    if (data.enabled !== undefined) scheduleData.enabled = !!data.enabled;
                     if (data.onHour !== undefined) scheduleData.onHour = data.onHour;
                     if (data.onMin !== undefined) scheduleData.onMin = data.onMin;
                     if (data.offHour !== undefined) scheduleData.offHour = data.offHour;
@@ -878,6 +889,9 @@
             resetTimer();
             highlightCurrentSettings();
             try { localStorage.setItem("pf_interval", val); } catch (ex) {}
+            if (window.Kiosk && window.Kiosk.setSlideInterval) {
+                try { window.Kiosk.setSlideInterval(String(val)); } catch (ex) {}
+            }
         });
     })();
 
@@ -892,6 +906,9 @@
             fadeMs = val;
             highlightCurrentSettings();
             try { localStorage.setItem("pf_fade", val); } catch (ex) {}
+            if (window.Kiosk && window.Kiosk.setFadeDuration) {
+                try { window.Kiosk.setFadeDuration(String(val)); } catch (ex) {}
+            }
         });
     })();
 

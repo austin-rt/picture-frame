@@ -428,6 +428,30 @@ public class KioskActivity extends Activity {
             writeFileContents(FRAME_DATA + "schedule.json", json);
         }
 
+        // Slide interval and fade were localStorage-only. WebView buffers that in
+        // memory and flushes lazily, so on a power cut (this frame's normal way of
+        // going down) a just-changed value was lost. Mirroring them to disk here
+        // makes them survive.
+        @JavascriptInterface
+        public String getSlideInterval() {
+            return rootRead(FRAME_DATA + "slide_interval").trim();
+        }
+
+        @JavascriptInterface
+        public void setSlideInterval(String seconds) {
+            rootWrite(FRAME_DATA + "slide_interval", seconds);
+        }
+
+        @JavascriptInterface
+        public String getFadeDuration() {
+            return rootRead(FRAME_DATA + "fade_duration").trim();
+        }
+
+        @JavascriptInterface
+        public void setFadeDuration(String ms) {
+            rootWrite(FRAME_DATA + "fade_duration", ms);
+        }
+
         @JavascriptInterface
         public String getPlayOrder() {
             return rootRead(FRAME_DATA + "play_order").trim();
@@ -494,8 +518,13 @@ public class KioskActivity extends Activity {
          */
         private void rootWrite(String path, String content) {
             try {
+                // sync(1) flushes the write to disk. This frame has no battery and
+                // gets killed by yanking the cord, so without it a setting written
+                // seconds earlier can still be sitting in the page cache and is lost
+                // on the next power cut.
                 Process p = Runtime.getRuntime().exec(new String[]{
-                    "su", "-c", "cat > '" + path + "' && chmod 644 '" + path + "'"
+                    "su", "-c",
+                    "cat > '" + path + "' && chmod 644 '" + path + "' && sync"
                 });
                 OutputStream os = p.getOutputStream();
                 os.write(content.getBytes("UTF-8"));
