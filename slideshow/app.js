@@ -952,33 +952,28 @@
         });
     }
 
-    // Settings: play order (shuffle vs manifest order)
+    // Settings: shuffle toggle. Off means play in manifest order, which is
+    // alphabetical by filename with photos and videos interleaved.
     (function () {
-        var btnShuffle = document.getElementById("order-shuffle");
-        var btnSeq = document.getElementById("order-sequential");
-        if (!btnShuffle || !btnSeq) return;
+        var toggle = document.getElementById("shuffle-toggle");
+        if (!toggle) return;
 
-        function updateOrderToggle() {
-            var seq = playOrder === "sequential";
-            btnShuffle.className = seq ? "settings-opt" : "settings-opt active";
-            btnSeq.className = seq ? "settings-opt active" : "settings-opt";
+        function updateShuffleToggle() {
+            var on = playOrder !== "sequential";
+            toggle.textContent = on ? "On" : "Off";
+            toggle.className = on ? "settings-toggle active" : "settings-toggle";
         }
 
-        btnShuffle.addEventListener("click", function (e) {
+        toggle.addEventListener("click", function (e) {
             e.stopPropagation();
-            savePlayOrder("shuffle");
-            updateOrderToggle();
-        });
-        btnSeq.addEventListener("click", function (e) {
-            e.stopPropagation();
-            savePlayOrder("sequential");
-            updateOrderToggle();
+            savePlayOrder(playOrder === "sequential" ? "shuffle" : "sequential");
+            updateShuffleToggle();
         });
 
-        var origOpenOrder = openSettings;
+        var origOpenShuffle = openSettings;
         openSettings = function () {
-            origOpenOrder();
-            updateOrderToggle();
+            origOpenShuffle();
+            updateShuffleToggle();
         };
     })();
 
