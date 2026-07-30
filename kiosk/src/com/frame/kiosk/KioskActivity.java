@@ -22,7 +22,9 @@ import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
 import java.io.FileWriter;
+import java.io.InputStreamReader;
 import java.io.IOException;
+import java.io.OutputStream;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -37,6 +39,20 @@ public class KioskActivity extends Activity {
     private static final String PAGE_URL = "http://localhost:8080";
     private static final int INITIAL_WAIT_MS = 20000;
     private static final int RETRY_DELAY_MS = 5000;
+
+    private static final String TERMUX_PREFIX = "/data/data/com.termux/files/usr";
+    private static final String TERMUX_HOME = "/data/data/com.termux/files/home";
+
+    /** Root-launched boot.sh, with the Termux env `su` would otherwise strip. */
+    private static final String ROOT_BOOT_CMD =
+        "export PREFIX=" + TERMUX_PREFIX + "; "
+        + "export HOME=" + TERMUX_HOME + "; "
+        + "export TMPDIR=$PREFIX/tmp; "
+        + "export PATH=$PREFIX/bin:$PREFIX/bin/applets:/system/bin:/system/xbin; "
+        + "export LD_LIBRARY_PATH=$PREFIX/lib; "
+        + "export SSL_CERT_FILE=$PREFIX/etc/tls/cert.pem; "
+        + "/system/bin/setsid $PREFIX/bin/bash $HOME/.termux/boot/boot.sh "
+        + ">> $HOME/frame-data/kiosk-boot.log 2>&1 < /dev/null &";
 
     private WebView webView;
     private Handler handler;
@@ -89,7 +105,7 @@ public class KioskActivity extends Activity {
             @Override
             public void onPageFinished(WebView view, String url) {
                 super.onPageFinished(view, url);
-                if (PAGE_URL.equals(url)) {
+                if (url != null && (url.equals(PAGE_URL) || url.equals(PAGE_URL + "/"))) {
                     Log.i(TAG, "Page loaded successfully");
                     pageLoaded = true;
                     retryCount = 0;
@@ -196,8 +212,8 @@ public class KioskActivity extends Activity {
                     } else if (Math.abs(dx) > 80 && Math.abs(dx) > Math.abs(dy)) {
                         if (pageLoaded) {
                             String fn = (dx < 0) ? "swipeLeft" : "swipeRight";
-                            webView.evaluateJavascript(
-                                "window." + fn + " && window." + fn + "()", null);
+                            webView.loadUrl(
+                                "javascript:void(window." + fn + " && window." + fn + "())");
                         }
                     }
                 }
@@ -300,24 +316,12 @@ public class KioskActivity extends Activity {
 
         @JavascriptInterface
         public boolean getDeleteAfterSync() {
-            File f = new File("/data/data/com.termux/files/home/frame-data/delete_after_sync");
-            if (!f.exists()) return false;
-            try {
-                BufferedReader br = new BufferedReader(new FileReader(f));
-                String val = br.readLine();
-                br.close();
-                return "true".equals(val != null ? val.trim() : "");
-            } catch (IOException e) { return false; }
+            return "true".equals(rootRead(FRAME_DATA + "delete_after_sync").trim());
         }
 
         @JavascriptInterface
         public void setDeleteAfterSync(boolean enabled) {
-            try {
-                File f = new File("/data/data/com.termux/files/home/frame-data/delete_after_sync");
-                FileWriter fw = new FileWriter(f);
-                fw.write(enabled ? "true" : "false");
-                fw.close();
-            } catch (IOException ignored) {}
+            rootWrite(FRAME_DATA + "delete_after_sync", enabled ? "true" : "false");
         }
 
         @JavascriptInterface
@@ -336,23 +340,17 @@ public class KioskActivity extends Activity {
             return locked.contains(filename);
         }
 
-        private File getLockedFile() {
-            return new File("/data/data/com.termux/files/home/frame-data/locked.txt");
+        private String getLockedFile() {
+            return FRAME_DATA + "locked.txt";
         }
 
         private Set<String> readLockedSet() {
             Set<String> set = new HashSet<String>();
-            File f = getLockedFile();
-            if (!f.exists()) return set;
-            try {
-                BufferedReader br = new BufferedReader(new FileReader(f));
-                String line;
-                while ((line = br.readLine()) != null) {
-                    line = line.trim();
-                    if (!line.isEmpty()) set.add(line);
-                }
-                br.close();
-            } catch (IOException ignored) {}
+            String body = rootRead(getLockedFile());
+            for (String line : body.split("\n")) {
+                line = line.trim();
+                if (!line.isEmpty()) set.add(line);
+            }
             return set;
         }
 
@@ -360,13 +358,140 @@ public class KioskActivity extends Activity {
             Set<String> locked = readLockedSet();
             if (add) locked.add(filename);
             else locked.remove(filename);
+            StringBuilder sb = new StringBuilder();
+            for (String name : locked) {
+                sb.append(name).append("\n");
+            }
+            rootWrite(getLockedFile(), sb.toString());
+        }
+
+        // --- Screen on/off via sysfs backlight ---
+
+        private static final String BL_PATH = "/sys/class/backlight/rk28_bl/brightness";
+        private static final String FRAME_DATA = "/data/data/com.termux/files/home/frame-data/";
+        private int savedBrightness = -1;
+
+        private String shellRead(String cmd) {
             try {
-                FileWriter fw = new FileWriter(getLockedFile());
-                for (String name : locked) {
-                    fw.write(name + "\n");
+                Process p = Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+                BufferedReader br = new BufferedReader(new InputStreamReader(p.getInputStream()));
+                String line = br.readLine();
+                br.close();
+                p.waitFor();
+                return line != null ? line.trim() : "";
+            } catch (Exception e) { return ""; }
+        }
+
+        private void shellWrite(String cmd) {
+            try {
+                Runtime.getRuntime().exec(new String[]{"su", "-c", cmd});
+            } catch (Exception ignored) {}
+        }
+
+        @JavascriptInterface
+        public void screenOff() {
+            String cur = shellRead("cat " + BL_PATH);
+            int val = 204;
+            try { val = Integer.parseInt(cur); } catch (Exception e) {}
+            if (val > 0) {
+                savedBrightness = val;
+                rootWrite(FRAME_DATA + "saved_brightness", String.valueOf(val));
+            }
+            shellWrite("echo 0 > " + BL_PATH);
+        }
+
+        @JavascriptInterface
+        public void screenOn() {
+            int val = savedBrightness;
+            if (val <= 0) {
+                try {
+                    val = Integer.parseInt(rootRead(FRAME_DATA + "saved_brightness").trim());
+                } catch (Exception e) {}
+            }
+            if (val <= 0) val = 204;
+            shellWrite("echo " + val + " > " + BL_PATH);
+        }
+
+        @JavascriptInterface
+        public boolean isScreenOff() {
+            String cur = shellRead("cat " + BL_PATH);
+            return "0".equals(cur);
+        }
+
+        @JavascriptInterface
+        public String getSchedule() {
+            return readFileContents(FRAME_DATA + "schedule.json");
+        }
+
+        @JavascriptInterface
+        public void setSchedule(String json) {
+            writeFileContents(FRAME_DATA + "schedule.json", json);
+        }
+
+        @JavascriptInterface
+        public String getSleepTimer() {
+            return readFileContents(FRAME_DATA + "sleep_timer.json");
+        }
+
+        @JavascriptInterface
+        public void setSleepTimer(String json) {
+            writeFileContents(FRAME_DATA + "sleep_timer.json", json);
+        }
+
+        private String readFileContents(String path) {
+            return rootRead(path);
+        }
+
+        private void writeFileContents(String path, String content) {
+            rootWrite(path, content);
+        }
+
+        /**
+         * Read a file as root, returning "" if it doesn't exist or can't be read.
+         *
+         * This MUST go through su. Everything this bridge persists lives under
+         * /data/data/com.termux/files/home, which is mode 700 owned by the Termux
+         * uid (u0_a32) — and this app runs as a different uid (u0_a34). Plain
+         * java.io could not even traverse into that directory, so every read
+         * returned empty and every write was silently swallowed by
+         * `catch (IOException ignored)`. That is why favoriting a photo appeared
+         * to do nothing: locked.txt was never created.
+         */
+        private String rootRead(String path) {
+            try {
+                Process p = Runtime.getRuntime().exec(new String[]{
+                    "su", "-c", "cat '" + path + "' 2>/dev/null"
+                });
+                BufferedReader br = new BufferedReader(
+                    new InputStreamReader(p.getInputStream()));
+                StringBuilder sb = new StringBuilder();
+                String line;
+                while ((line = br.readLine()) != null) {
+                    sb.append(line).append("\n");
                 }
-                fw.close();
-            } catch (IOException ignored) {}
+                br.close();
+                p.waitFor();
+                return sb.toString();
+            } catch (Exception e) { return ""; }
+        }
+
+        /**
+         * Write a file as root. Content goes over the process's stdin rather than
+         * being interpolated into the command, so filenames with quotes or spaces
+         * can't break the shell. Chmod 644 afterwards so the sync scripts can read
+         * it back whether they run as root or as the Termux user.
+         */
+        private void rootWrite(String path, String content) {
+            try {
+                Process p = Runtime.getRuntime().exec(new String[]{
+                    "su", "-c", "cat > '" + path + "' && chmod 644 '" + path + "'"
+                });
+                OutputStream os = p.getOutputStream();
+                os.write(content.getBytes("UTF-8"));
+                os.flush();
+                os.close();
+                p.waitFor();
+            } catch (Exception ignored) {}
         }
     }
 
@@ -455,7 +580,34 @@ public class KioskActivity extends Activity {
             }
         }, delayMs);
 
-        // Step 2: Try full boot.sh via BOOT_COMPLETED (for sshd, sync, etc.)
+        // Step 2: Run boot.sh directly as root — this is what actually brings up
+        // sshd, tailscaled and the sync loop. Previously we only broadcast
+        // BOOT_COMPLETED to Termux:Boot, which frequently never fires because
+        // Android leaves the app in "stopped" state after a cold boot. When that
+        // happened the slideshow still worked (step 1) but the frame was
+        // unreachable — no ssh, no Tailscale, and no photo sync at all.
+        //
+        // The env below is mandatory, not belt-and-braces: `su` strips it, and
+        // without LD_LIBRARY_PATH the Termux bash won't even link
+        // ("CANNOT LINK EXECUTABLE: library libandroid-support.so not found").
+        // setsid detaches it so it outlives the short-lived su shell.
+        handler.postDelayed(new Runnable() {
+            @Override
+            public void run() {
+                try {
+                    Runtime.getRuntime().exec(new String[]{"su", "-c", ROOT_BOOT_CMD});
+                    Log.i(TAG, "Root boot.sh launched");
+                } catch (Exception e) {
+                    Log.w(TAG, "Root boot.sh failed: " + e.getMessage());
+                }
+            }
+        }, delayMs + 3000);
+
+        // Step 3: Also poke Termux:Boot. Harmless if step 2 already succeeded
+        // (boot.sh kills stale services before restarting them), and covers the
+        // case where Termux:Boot is healthy and would run boot.sh as the Termux
+        // user — which is the better outcome, since then sshd can authenticate
+        // as a normal user instead of root.
         handler.postDelayed(new Runnable() {
             @Override
             public void run() {
@@ -469,7 +621,7 @@ public class KioskActivity extends Activity {
                     Log.w(TAG, "Root broadcast failed: " + e.getMessage());
                 }
             }
-        }, delayMs + 3000);
+        }, delayMs + 8000);
     }
 
     /**
