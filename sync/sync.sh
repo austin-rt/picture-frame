@@ -69,15 +69,27 @@ mkdir -p "$RAW_DIR" "$PHOTOS_DIR" "$SLIDESHOW_DIR"
 # Symlink photos dir into slideshow dir so the HTML can reference photos/filename.jpg
 ln -sfn "$PHOTOS_DIR" "$SLIDESHOW_DIR/photos"
 
-# sync.sh does NOT deploy slideshow files. The deploy-frame workflow is the only
-# thing that writes app.js / index.html / style.css, so there is exactly one
-# source of truth.
+# sync.sh does not DEPLOY slideshow files — the deploy-frame workflow owns
+# app.js / index.html / style.css. It only RESTORES them if they have gone
+# missing entirely, from the pristine copy CI drops at $SLIDESHOW_DIST.
 #
-# There used to be a second copy at ~/slideshow that this script copied in
-# whenever it was newer. That existed because hand-scp was once the only deploy
-# path and edits were drifting out of sync. With CI deploying on every push it
-# became a way for a stale file to overwrite a fresh deploy, so the directory and
-# the copy step are both gone.
+# The distinction matters. The old code copied from a second directory whenever
+# that copy was newer, which meant a stale file could overwrite a fresh deploy.
+# Restoring only when the destination is absent cannot do that: if the file is
+# there, this code never touches it. And because CI writes $SLIDESHOW_DIST on
+# every deploy, the fallback can never drift from what is deployed.
+SLIDESHOW_DIST="${SLIDESHOW_DIST:-$HOME/slideshow-dist}"
+
+restore_missing_slideshow() {
+    [[ -d "$SLIDESHOW_DIST" ]] || return 0
+    local name
+    for name in app.js index.html style.css; do
+        if [[ ! -f "$SLIDESHOW_DIR/$name" && -f "$SLIDESHOW_DIST/$name" ]]; then
+            cp "$SLIDESHOW_DIST/$name" "$SLIDESHOW_DIR/$name" \
+                && log "RESTORED missing slideshow/$name from $SLIDESHOW_DIST"
+        fi
+    done
+}
 
 # Write config.json for the slideshow front-end
 cat > "$CONFIG_JSON" <<EJSON
@@ -251,6 +263,10 @@ sync_once() {
 # --- Service watchdog ---
 HTTP_PORT="${HTTP_PORT:-8080}"
 check_services() {
+    # Put back any slideshow file that has vanished. Runs every cycle, so the
+    # frame heals itself within one interval instead of waiting for a deploy.
+    restore_missing_slideshow
+
     # Restart httpd if not running
     if ! pgrep -f "busybox httpd" >/dev/null 2>&1; then
         if [[ -d "$SLIDESHOW_DIR" ]]; then

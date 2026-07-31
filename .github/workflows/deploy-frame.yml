@@ -40,12 +40,33 @@ jobs:
           HOME_DIR: /data/data/com.termux/files/home
         run: |
           SSH="ssh -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20"
+          SCP="scp -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20"
           # scp rather than rsync: the frame's Termux has no rsync.
-          scp -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
-            sync/*.sh "$FRAME:$HOME_DIR/sync/"
-          scp -i ~/.ssh/frame -o StrictHostKeyChecking=no -o ConnectTimeout=20 \
-            slideshow/app.js slideshow/index.html slideshow/style.css \
-            "$FRAME:$HOME_DIR/frame-data/slideshow/"
+
+          # Land everything in a staging dir first, then mv into place.
+          #
+          # scp writes in place (O_TRUNC on the existing inode). sync.sh is a
+          # long-running bash loop and bash reads a script incrementally as it
+          # executes, so overwriting it under a running process can make it read
+          # garbage from a half-written file. mv swaps the directory entry to a
+          # new inode instead, leaving the running process on the old one until
+          # it next restarts.
+          $SSH "$FRAME" "mkdir -p $HOME_DIR/.deploy-stage $HOME_DIR/slideshow-dist"
+          $SCP sync/*.sh "$FRAME:$HOME_DIR/.deploy-stage/"
+          $SCP slideshow/app.js slideshow/index.html slideshow/style.css \
+            "$FRAME:$HOME_DIR/.deploy-stage/"
+
+          $SSH "$FRAME" "set -e
+            cd $HOME_DIR/.deploy-stage
+            for f in *.sh; do mv -f \"\$f\" $HOME_DIR/sync/\"\$f\"; done
+            for f in app.js index.html style.css; do
+              # live copy served by httpd, and the pristine copy sync.sh
+              # restores from if the live one ever goes missing
+              cp -f \"\$f\" $HOME_DIR/slideshow-dist/\"\$f\"
+              mv -f \"\$f\" $HOME_DIR/frame-data/slideshow/\"\$f\"
+            done
+            chmod 755 $HOME_DIR/sync/*.sh
+            sync"
           $SSH "$FRAME" "ls -la $HOME_DIR/frame-data/slideshow/app.js"
 
       - name: Verify the frame still serves the slideshow
