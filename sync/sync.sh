@@ -69,20 +69,15 @@ mkdir -p "$RAW_DIR" "$PHOTOS_DIR" "$SLIDESHOW_DIR"
 # Symlink photos dir into slideshow dir so the HTML can reference photos/filename.jpg
 ln -sfn "$PHOTOS_DIR" "$SLIDESHOW_DIR/photos"
 
-# Keep the deployed slideshow in step with the checkout. This used to run only
-# when index.html was missing, so any edit to app.js or style.css never reached
-# the frame and the running copy silently drifted. Copy anything newer, and
-# never clobber the generated config/manifest that live in the same directory.
-if [[ -d "$SCRIPT_DIR/../slideshow" ]]; then
-    for src in "$SCRIPT_DIR/../slideshow/"*; do
-        [[ -f "$src" ]] || continue
-        name=$(basename "$src")
-        [[ "$name" == "config.json" || "$name" == "manifest.json" ]] && continue
-        if [[ ! -f "$SLIDESHOW_DIR/$name" || "$src" -nt "$SLIDESHOW_DIR/$name" ]]; then
-            cp "$src" "$SLIDESHOW_DIR/$name" 2>/dev/null && log "Updated slideshow/$name"
-        fi
-    done
-fi
+# sync.sh does NOT deploy slideshow files. The deploy-frame workflow is the only
+# thing that writes app.js / index.html / style.css, so there is exactly one
+# source of truth.
+#
+# There used to be a second copy at ~/slideshow that this script copied in
+# whenever it was newer. That existed because hand-scp was once the only deploy
+# path and edits were drifting out of sync. With CI deploying on every push it
+# became a way for a stale file to overwrite a fresh deploy, so the directory and
+# the copy step are both gone.
 
 # Write config.json for the slideshow front-end
 cat > "$CONFIG_JSON" <<EJSON
