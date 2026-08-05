@@ -181,9 +181,14 @@ Check these before assuming a different frame will work:
 The backlight path is the one most likely to differ. Find yours with
 `ls /sys/class/backlight/`.
 
-## A note on setup/provision.sh
+## setup/provision.sh
 
-It predates the current architecture and is kept for reference only. Steps 1–6 are broadly still
-right; **steps 7 and 8 are wrong now** — it installs the Tailscale Android app (we use the Termux
-binary) and configures Fully Kiosk Browser (replaced by `kiosk/`). It also assumes a non-root setup
-throughout. Follow this document instead.
+`setup/provision.sh` automates the ADB-side of steps 2–6 above, then builds and installs the APK.
+It refuses to run on an unrooted device. Use it if you're setting up a second frame:
+
+```sh
+bash setup/provision.sh
+```
+
+It cannot do step 0 (rooting), and the Termux commands in step 6 still need typing on the device
+itself, since Termux won't accept them over ADB.

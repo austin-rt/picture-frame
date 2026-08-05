@@ -1,17 +1,15 @@
 #!/usr/bin/env bash
-# SUPERSEDED — see GETTING_STARTED.md in the repo root. Kept for reference.
-# This predates the current architecture: step 7 installs the Tailscale Android
-# app (we now run the tailscaled binary in Termux) and step 8 configures Fully
-# Kiosk Browser (replaced by the custom APK in kiosk/). It also assumes an
-# unrooted device throughout, which no longer holds.
+# Automated provisioning for a Frameo-style Android frame (developed on a YENOCK
+# 10.1" ZN-DP1101). Run from your laptop with the frame connected via USB.
 #
-# Automated provisioning for YENOCK 10.1" ZN-DP1101 Frameo frame.
-# Run from your laptop with the frame connected via USB.
+# This is the automation half of GETTING_STARTED.md — read that first for the
+# parts a script cannot do, above all rooting the device.
 #
 # Prereqs:
+#   - The frame is ALREADY ROOTED (checked below; everything depends on it)
 #   - Run triage.sh first to confirm specs
 #   - Connect Wi-Fi via Android system settings BEFORE running this
-#   - Download APKs into ../apks/ (termux.apk, termux-boot.apk, tailscale.apk, fullykiosk.apk)
+#   - Download APKs into ../apks/ (termux.apk, termux-boot.apk)
 #   - Generate rclone.conf on your laptop (rclone config) and place in ../sync/rclone.conf
 #
 # This script automates everything possible via ADB. Steps requiring
@@ -47,6 +45,13 @@ fi
 ANDROID_VER=$(adb shell getprop ro.build.version.release 2>/dev/null | tr -d '\r')
 echo "  Device: Android $ANDROID_VER"
 
+# Root is load-bearing: sshd runs as root, the kiosk bridge persists settings via
+# su, and boot.sh is launched as root. Fail here rather than half-provisioning.
+if ! adb shell "su -c id" 2>/dev/null | grep -q "uid=0"; then
+    fail "Device is not rooted (su -c id did not return uid=0). See GETTING_STARTED.md."
+fi
+echo "  Root: yes"
+
 if ! adb shell dumpsys wifi 2>/dev/null | grep "mNetworkInfo" | head -1 | grep -q "CONNECTED"; then
     fail "Wi-Fi not connected. Connect via Android Settings > Wi-Fi FIRST (not through Frameo app)."
 fi
@@ -54,7 +59,7 @@ echo "  Wi-Fi: connected"
 echo ""
 
 # --- Step 1: Disable Frameo ---
-step "1/8" "Disabling Frameo app"
+step "1/7" "Disabling Frameo app"
 FRAMEO_PKGS=$(adb shell pm list packages 2>/dev/null | grep -i frameo | tr -d '\r' | sed 's/package://')
 if [[ -n "$FRAMEO_PKGS" ]]; then
     for pkg in $FRAMEO_PKGS; do
@@ -66,9 +71,9 @@ else
 fi
 
 # --- Step 2: Install APKs ---
-step "2/8" "Sideloading APKs"
+step "2/7" "Sideloading APKs"
 missing_apks=false
-for apk in termux.apk termux-boot.apk tailscale.apk fullykiosk.apk; do
+for apk in termux.apk termux-boot.apk; do
     if [[ -f "$APKS_DIR/$apk" ]]; then
         printf "  Installing %s ... " "$apk"
         result=$(adb install -r "$APKS_DIR/$apk" 2>&1)
@@ -86,18 +91,21 @@ if $missing_apks; then
     echo ""
     echo "  Download APKs from:"
     echo "    Termux + Termux:Boot: https://f-droid.org/en/packages/com.termux/"
-    echo "    Tailscale: https://play.google.com/store/apps/details?id=com.tailscale.ipn"
-    echo "    Fully Kiosk: https://www.fully-kiosk.com/en/#download"
+    echo "    Take both from the SAME source — mismatched builds refuse to talk,"
+    echo "    and current Play Store builds do not support Android 6."
 fi
 
 # --- Step 3: Push files ---
-step "3/8" "Pushing project files to device"
+step "3/7" "Pushing project files to device"
 adb shell mkdir -p /sdcard/frame-setup/sync 2>/dev/null
 adb shell mkdir -p /sdcard/frame-setup/slideshow 2>/dev/null
 
 printf "  Pushing sync scripts ... "
 adb push "$PROJECT_DIR/sync/" /sdcard/frame-setup/sync/ 2>/dev/null && ok || warn "Push failed"
 
+# The slideshow seeds frame-data/slideshow AND slideshow-dist, the copy sync.sh
+# restores from if a file ever goes missing. After this initial seed, the deploy
+# workflow owns these files — do not hand-copy them again.
 printf "  Pushing slideshow ... "
 adb push "$PROJECT_DIR/slideshow/" /sdcard/frame-setup/slideshow/ 2>/dev/null && ok || warn "Push failed"
 
@@ -109,67 +117,68 @@ else
 fi
 
 # --- Step 4: Battery optimization whitelist ---
-step "4/8" "Whitelisting apps from battery optimization"
-for pkg in com.termux com.termux.boot com.tailscale.ipn; do
+step "4/7" "Whitelisting apps from battery optimization"
+for pkg in com.termux com.termux.boot com.frame.kiosk; do
     printf "  Whitelisting %s ... " "$pkg"
     adb shell dumpsys deviceidle whitelist +"$pkg" 2>/dev/null && ok || warn "Failed"
 done
 
 # --- Step 5: Keep screen on + stay awake settings ---
-step "5/8" "Configuring display settings"
+step "5/7" "Configuring display settings"
 # Keep Wi-Fi on during sleep
 adb shell settings put global wifi_sleep_policy 2 2>/dev/null && printf "  Wi-Fi sleep policy: never\n"
-# Disable screen timeout (Fully Kiosk handles this, but belt+suspenders)
+# Disable screen timeout (the kiosk APK also holds a wake lock)
 adb shell settings put system screen_off_timeout 2147483647 2>/dev/null && printf "  Screen timeout: disabled\n"
 
 # --- Step 6: Termux setup (requires touching the frame) ---
-step "6/8" "Termux initial setup"
+step "6/7" "Termux initial setup"
 manual "Open Termux on the frame and run these commands:"
 echo ""
 echo "    termux-setup-storage"
 echo ""
-echo "    pkg update -y && pkg install -y rclone ffmpeg openssh busybox"
+echo "    pkg update -y && pkg install -y rclone ffmpeg openssh busybox coreutils"
 echo ""
+echo "    mkdir -p ~/frame-data/slideshow ~/slideshow-dist ~/.config/rclone ~/.termux/boot ~/.ssh"
 echo "    cp -r /sdcard/frame-setup/sync ~/sync"
-echo "    cp -r /sdcard/frame-setup/slideshow ~/slideshow"
-echo "    mkdir -p ~/frame-data ~/.config/rclone ~/.termux/boot ~/.ssh"
 echo "    chmod +x ~/sync/*.sh"
 echo "    cp /sdcard/frame-setup/rclone.conf ~/.config/rclone/rclone.conf"
 echo "    ln -sf ~/sync/boot.sh ~/.termux/boot/boot.sh"
 echo ""
-echo "    # SSH setup — paste your laptop's public key:"
+echo "    # seed both the served copy and the restore-from copy"
+echo "    cp /sdcard/frame-setup/slideshow/* ~/frame-data/slideshow/"
+echo "    cp /sdcard/frame-setup/slideshow/* ~/slideshow-dist/"
+echo ""
+echo "    # You will log in as root@, not as a username — Android has no passwd"
+echo "    # file, so a root-run sshd can only resolve 'root'."
 echo "    echo 'YOUR_PUBLIC_KEY_HERE' >> ~/.ssh/authorized_keys"
 echo "    chmod 600 ~/.ssh/authorized_keys"
-echo "    sshd"
 echo ""
-echo "    # Test sync"
-echo "    bash ~/sync/sync.sh"
+echo "    # HEIC needs the decoder from tools/heic2jpg-rs cross-compiled for this"
+echo "    # ABI and dropped at \$PREFIX/bin/heic2jpg, or every .HEIC fails."
 echo ""
 wait_enter
 
-# --- Step 7: Tailscale ---
-step "7/8" "Tailscale setup"
-printf "  Launching Tailscale ... "
-adb shell am start com.tailscale.ipn/.IPNActivity 2>/dev/null && ok || warn "Couldn't launch — open manually"
-manual "On the frame:"
-echo "    1. Sign in with your Tailscale account"
-echo "    2. Go to Android Settings > Network & internet > VPN > Tailscale"
-echo "    3. Enable 'Always-on VPN'"
-wait_enter
+# --- Step 7: Kiosk APK ---
+step "7/7" "Building and installing the kiosk APK"
+if [[ -x "$PROJECT_DIR/kiosk/build.sh" ]]; then
+    printf "  Building ... "
+    if (cd "$PROJECT_DIR/kiosk" && ./build.sh >/dev/null 2>&1); then
+        ok
+        printf "  Installing ... "
+        adb install -r "$PROJECT_DIR/kiosk/build/kiosk.apk" 2>&1 | grep -q Success && ok \
+            || warn "Install failed — run 'cd kiosk && ./build.sh' to see the error"
+    else
+        warn "Build failed — needs a JDK and Android SDK platform-34 + build-tools 34.0.0"
+    fi
+else
+    warn "kiosk/build.sh not found"
+fi
 
-# --- Step 8: Fully Kiosk ---
-step "8/8" "Fully Kiosk Browser setup"
-printf "  Launching Fully Kiosk ... "
-adb shell am start de.ozerov.fully/.FullyActivity 2>/dev/null && ok || warn "Couldn't launch — open manually"
-manual "In Fully Kiosk on the frame:"
-echo "    1. Set Start URL to: http://localhost:8080"
-echo "       (We'll run a tiny server in Termux — more reliable than file://)"
-echo "    2. Go to Web Content Settings > Enable JavaScript"
-echo "    3. Go to Other Settings > Kiosk Mode > Enable"
-echo "    4. Go to Other Settings > Launch on Boot > Enable"
-echo "    5. Press Home button > select Fully Kiosk > 'Always'"
-echo ""
-echo "    Then in Termux, add the HTTP server to boot.sh (already included)."
+printf "  Launching kiosk ... "
+adb shell am start -n com.frame.kiosk/.KioskActivity >/dev/null 2>&1 && ok || warn "Couldn't launch"
+
+manual "Set the kiosk as the home app so it survives reboots:"
+echo "    Press Home on the frame > select 'Frame Kiosk' > 'Always'"
 wait_enter
 
 # --- Final verification ---
@@ -177,10 +186,13 @@ echo ""
 echo "=== Provisioning complete ==="
 echo ""
 echo "  Verify:"
-echo "    1. Slideshow is running in Fully Kiosk"
-echo "    2. ssh user@<tailscale-ip> works from your laptop"
-echo "    3. Power cycle the frame — everything auto-starts"
+echo "    adb shell \"curl -s -o /dev/null -w '%{http_code}\\n' http://127.0.0.1:8080/index.html\"   # 200"
+echo "    adb shell \"tail -20 /data/data/com.termux/files/home/frame-data/boot.log\""
+echo "    ssh root@<frame-ip> -p 8022 'echo ok'"
 echo ""
-echo "  If using localhost HTTP server, add to Termux boot script:"
-echo "    cd ~/slideshow && python -m http.server 8080 &"
-echo "  (This is already handled in boot.sh)"
+echo "  Then POWER-CYCLE the frame. That is the test that matters — everything"
+echo "  should come back with no intervention."
+echo ""
+echo "  Optional next steps (see GETTING_STARTED.md):"
+echo "    - Tailscale for remote access (tailscaled binary in Termux, not the app)"
+echo "    - CI deploys via .github/workflows/deploy-frame.yml"
