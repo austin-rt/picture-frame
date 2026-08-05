@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# SUPERSEDED — see GETTING_STARTED.md in the repo root. Kept for reference.
+# This predates the current architecture: step 7 installs the Tailscale Android
+# app (we now run the tailscaled binary in Termux) and step 8 configures Fully
+# Kiosk Browser (replaced by the custom APK in kiosk/). It also assumes an
+# unrooted device throughout, which no longer holds.
+#
 # Automated provisioning for YENOCK 10.1" ZN-DP1101 Frameo frame.
 # Run from your laptop with the frame connected via USB.
 #

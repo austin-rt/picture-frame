@@ -6,6 +6,9 @@ software, and turned into a kiosk that plays photos and videos synced from cloud
 The device is a YENOCK 10.1" ZN-DP1101 (Frameo hardware) — Android 6.0.1, Rockchip rk312x, 1280x800.
 It runs Termux for the shell side and a small custom APK for the UI side.
 
+> **Setting one up from scratch? → [GETTING_STARTED.md](GETTING_STARTED.md)**
+> Note that the frame must already be rooted; that step is a prerequisite this repo can't do for you.
+
 ## How it works
 
 ```
