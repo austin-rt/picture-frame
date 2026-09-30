@@ -114,9 +114,14 @@ FRAME_NAME="livingroom"
 SYNC_INTERVAL=300
 ```
 
-Everything else has a working default — see the Configuration table in the README.
+Everything else has a working default — see the Configuration table in the README. `frames/`
+holds the same settings for keeping on your laptop: `base.conf` is shared, `example.conf` is a
+per-frame template, and `frames/*.local.conf` is gitignored for your real ones.
 
 ## 6. Build and install the kiosk APK
+
+`build.sh` signs with a local debug keystore it creates on first run (gitignored). Set
+`KIOSK_KEYSTORE_PASS` if you want a password other than the default.
 
 ```sh
 cd kiosk && ./build.sh

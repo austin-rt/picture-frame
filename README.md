@@ -47,8 +47,22 @@ SSH in as **`root@`**, not as a personal user — Android has no such account, a
 (see Gotchas).
 
 ```sh
-ssh frame          # over Tailscale  (<frame-tailscale-ip>)
-ssh frame-local    # over LAN        (<frame-lan-ip>:8022)
+ssh frame          # over Tailscale
+ssh frame-local    # over LAN
+```
+
+Those aliases come from `~/.ssh/config` on your laptop; fill in your own frame's addresses:
+
+```
+Host frame frame-local
+    User root
+    IdentityFile ~/.ssh/id_ed25519
+Host frame
+    HostName <frame-tailscale-ip>
+    Port 22                      # tailscale serve forwards 22 -> 8022
+Host frame-local
+    HostName <frame-lan-ip>
+    Port 8022
 ```
 
 If sshd is ever dead, **ADB over TCP is the escape hatch** and survives reboots

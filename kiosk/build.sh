@@ -35,14 +35,17 @@ cd "$OUT/dex"
 cd "$KIOSK_DIR"
 
 echo "=== Signing APK ==="
+# Local debug signing key; the keystore itself is gitignored. Override the
+# password with KIOSK_KEYSTORE_PASS if you generate your own.
 KEYSTORE="$KIOSK_DIR/debug.keystore"
+KS_PASS="${KIOSK_KEYSTORE_PASS:-framekiosk}"
 if [ ! -f "$KEYSTORE" ]; then
-    keytool -genkey -v -keystore "$KEYSTORE" -alias frame -keyalg RSA -keysize 2048 -validity 36500 -storepass framekiosk -keypass framekiosk -dname "CN=Frame,O=Frame,L=Home,ST=Home,C=US"
+    keytool -genkey -v -keystore "$KEYSTORE" -alias frame -keyalg RSA -keysize 2048 -validity 36500 -storepass "$KS_PASS" -keypass "$KS_PASS" -dname "CN=Frame,O=Frame,L=Home,ST=Home,C=US"
 fi
 
 "$ZIPALIGN" -f 4 "$OUT/kiosk-unsigned.apk" "$OUT/kiosk-aligned.apk"
 
-"$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias frame --ks-pass pass:framekiosk --key-pass pass:framekiosk --out "$OUT/kiosk.apk" "$OUT/kiosk-aligned.apk"
+"$APKSIGNER" sign --ks "$KEYSTORE" --ks-key-alias frame --ks-pass "pass:$KS_PASS" --key-pass "pass:$KS_PASS" --out "$OUT/kiosk.apk" "$OUT/kiosk-aligned.apk"
 
 echo "=== Done ==="
 ls -la "$OUT/kiosk.apk"

@@ -8,5 +8,6 @@ slideshow/manifest.json
 slideshow/config.json
 kiosk/build/
 kiosk/debug.keystore
+frames/*.local.conf
 tools/heic2jpg-rs/target/
 tools/heic2jpg/

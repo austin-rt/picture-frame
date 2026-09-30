@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 # Reboot stress test: verifies all services start reliably after power cycle.
 # Run from Mac with ADB connected to the frame.
-# Usage: bash setup/stress-test.sh [NUM_REBOOTS]
+# Usage: FRAME_ADB_HOST=<frame-lan-ip>:5555 bash setup/stress-test.sh [NUM_REBOOTS]
 set -uo pipefail
 
 REBOOTS="${1:-10}"
-ADB_HOST="<frame-lan-ip>:5555"
+ADB_HOST="${FRAME_ADB_HOST:?set FRAME_ADB_HOST=<frame-lan-ip>:5555}"
 # How long to wait after reboot for Android + Termux + boot.sh to finish
 BOOT_WAIT=90
 # Extra time to wait for Tailscale to connect
